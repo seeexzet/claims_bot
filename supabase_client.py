@@ -8,17 +8,24 @@ class SupabaseClient:
         load_dotenv()   # Загрузить переменные окружения из .env
         self.url: str = os.environ.get("SUPABASE_URL")
         self.anon_key: str = os.environ.get("SUPABASE_KEY")
+
         self.table_username = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
+        self.field_fio = os.environ.get("FIELD_FIO")
+        self.field_company = os.environ.get("FIELD_COMPANY")
+        self.field_email = os.environ.get("FIELD_EMAIL")
+        self.field_phone = os.environ.get("FIELD_PHONE")
+
         self.table_claims = os.environ.get("TABLE_CLAIM")
         self.field_claims_user_id = os.environ.get("FIELD_CLAIMS_USER_ID")
+        self.field_claims_priority = os.environ.get("FIELD_CLAIMS_PRIORITY")
+        self.field_claims_theme = os.environ.get("FIELD_CLAIMS_THEME")
         self.field_claims_text = os.environ.get("FIELD_CLAIMS_TEXT")
         self.field_claims_status = os.environ.get("FIELD_CLAIMS_STATUS")
         self.field_claims_text_new_status = os.environ.get("FIELD_CLAIMS_TEXT_NEW_STATUS")
         # Создать клиента Supabase с использованием анонимного ключа
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
-
 
     def sign_in(self, email: str = None, password: str = None):
         """
@@ -37,11 +44,9 @@ class SupabaseClient:
         self.user = auth_response
         return auth_response
 
-
     def get_data(self, table_name: str):
         response = self.client.table(self.table_username).select("*").execute()
         return response
-
 
     def check_user(self, username: str) -> bool:
         response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
@@ -50,18 +55,20 @@ class SupabaseClient:
             return True
         return False
 
-
-    def add_user(self, username: str):
+    def add_user(self, username: str, registration_data: dict):
         if not self.check_user(username):
             data = {
-                self.field_username: username
+                self.field_username: username,
+                self.field_fio: registration_data['fio'],
+                self.field_company: registration_data['company'],
+                self.field_email: registration_data['email'],
+                self.field_phone: registration_data['phone']
             }
             print(data)
             response = self.client.table(self.table_username).insert(data).execute()
             return response.data # Ответ от Supabase.
         else:
             return None
-
 
     def get_user_id_by_username(self, username: str):
         if self.check_user(username):
@@ -71,17 +78,18 @@ class SupabaseClient:
                 return data[0].get("id")
         return None
 
-
-    def create_claim(self, username: str, claim_text: str, claim_status: str = "new"):
+    def create_claim(self, username: str, claim_data: dict, claim_status: str = 'new'):
         user_id = self.get_user_id_by_username(username)
-        claim_data = {
+        data = {
             self.field_claims_user_id : user_id,
-            self.field_claims_text: claim_text,
+            self.field_claims_text: claim_data["text"],
+            self.field_claims_theme: claim_data["theme"],
+            self.field_claims_priority: claim_data["priority"],
             self.field_claims_status : claim_status
         }
-        response = self.client.table(self.table_claims).insert(claim_data).execute()
+        print(data)
+        response = self.client.table(self.table_claims).insert(data).execute()
         return response.data
-
 
     def check_claims_status(self, username: str):
         user_id = self.get_user_id_by_username(username)
@@ -110,9 +118,9 @@ if __name__ == "__main__":
     response_check_user = supabase_client.check_user("user1")
     print("Проверка наличия пользователя:", response_check_user)
 
-    # Проверка на вставку данных в БД
-    response_insert_data = supabase_client.add_user("tgname2")
-    print("Проверка вставки данных:", response_insert_data)
+    # # Проверка на вставку данных в БД
+    # response_insert_data = supabase_client.add_user("tgname2")
+    # print("Проверка вставки данных:", response_insert_data)
 
     # Проверка на создание заявки
     response_add_claim = supabase_client.create_claim("@tgname", "not everything is bad")
