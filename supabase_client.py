@@ -49,11 +49,12 @@ class SupabaseClient:
         return response
 
     def check_user(self, username: str) -> bool:
-        response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
-        data = response.data
-        if data and len(data) > 0:
-            return True
-        return False
+        try:
+            response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
+            data = response.data
+            return bool(data and len(data) > 0)
+        except Exception as e:
+            return False
 
     def add_user(self, username: str, registration_data: dict):
         if not self.check_user(username):
@@ -65,17 +66,25 @@ class SupabaseClient:
                 self.field_phone: registration_data['phone']
             }
             print(data)
-            response = self.client.table(self.table_username).insert(data).execute()
-            return response.data # Ответ от Supabase.
+            try:
+                response = self.client.table(self.table_username).insert(data).execute()
+                return response.data # Ответ от Supabase.
+            except Exception as e:
+                print(f"Error adding user '{username}': {str(e)}")
+                return None
         else:
             return None
 
     def get_user_id_by_username(self, username: str):
         if self.check_user(username):
-            response = self.client.table(self.table_username).select("id").eq(self.field_username, username).execute()
-            data = response.data
-            if data and len(data) > 0:
-                return data[0].get("id")
+            try:
+                response = self.client.table(self.table_username).select("id").eq(self.field_username, username).execute()
+                data = response.data
+                if data and len(data) > 0:
+                    return data[0].get("id")
+            except Exception as e:
+                print(f"Error searching user '{username}': {str(e)}")
+                return None
         return None
 
     def create_claim(self, username: str, claim_data: dict, claim_status: str = 'new'):
@@ -88,8 +97,12 @@ class SupabaseClient:
             self.field_claims_status : claim_status
         }
         print(data)
-        response = self.client.table(self.table_claims).insert(data).execute()
-        return response.data
+        try:
+            response = self.client.table(self.table_claims).insert(data).execute()
+            return response.data
+        except Exception as e:
+            print(f"Error creating claim for user '{username}': {str(e)}")
+            return None
 
     def check_claims_status(self, username: str):
         user_id = self.get_user_id_by_username(username)
