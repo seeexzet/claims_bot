@@ -44,6 +44,8 @@ class TelegramBot:
         self.bot.callback_query_handler(func=lambda call: True)(self.handle_query)
 
     def start(self, message):
+        # Удаляем все зарегистрированные обработчики, чтобы прервать текущую регистрацию или другой процесс.
+        self.bot.clear_step_handler_by_chat_id(message.chat.id)
         if not message.chat.username:
             self.bot.send_message(message.chat.id, "Перед работой с ботом установите имя аккаунта в настройках Telegram")
             return
@@ -54,14 +56,13 @@ class TelegramBot:
         self.create_keyboard(message.chat.id)
 
     def send_help(self, message):
-        return
-        # self.bot.send_message(message.chat.id,
-        #                       "Список доступных команд:\n"
-        #                       "/start - Начать работу с ботом\n"
-        #                       "/reg - Регистрация пользователя\n"
-        #                       "/claim - Оставить заявку\n"
-        #                       "/check - Проверить статус заявки\n"
-        #                       "/help - Получить помощь")
+        self.bot.send_message(message.chat.id,
+                              "Список доступных команд:\n"
+                              "/start - Начать работу с ботом\n"
+                              "/reg - Регистрация пользователя\n"
+                              "/claim - Оставить заявку\n"
+                              "/check - Проверить статус заявки\n"
+                              "/help - Получить помощь")
 
     def create_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
@@ -92,13 +93,7 @@ class TelegramBot:
 
         if call.data == 'button1':
             self.bot.answer_callback_query(call.id, "Вы нажали Регистрация пользователя")
-            if not self.supabase_client.check_user(username):
-                self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
-                # функции для регистрации
-                self.bot.send_message(call.message.chat.id, "Введите ваши фамилию, имя, отчество:")
-                self.bot.register_next_step_handler(call.message, self.process_registration_name)
-            else:
-                self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
+            self.registration(username, call)
 
         elif call.data == 'button2':
             self.bot.answer_callback_query(call.id, "Вы нажали Оставить заявку")
@@ -152,53 +147,65 @@ class TelegramBot:
             msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
             self.bot.register_next_step_handler(msg, self.process_claim_theme)
 
+    def registration(self, username, call):
+        if not self.supabase_client.check_user(username):
+            self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
+            # функции для регистрации
+            self.bot.send_message(call.message.chat.id, "Введите ваши фамилию, имя, отчество:")
+            self.bot.register_next_step_handler(call.message, self.process_registration_name)
+        else:
+            self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
 
     def process_registration_name(self, message):
-        username = message.from_user.username
-        self.reg_data[username] = {}
-        if len(message.text.split(' ')) == 3:
-            self.reg_data[username]['fio'] = message.text
-            self.bot.send_message(message.chat.id, "Введите название компании:")
-            self.bot.register_next_step_handler(message, self.process_registration_company, username)
-        else:
-            self.bot.send_message(message.chat.id, "Фамилия, имя и отчество введены неверно. Повторите запрос")
-            self.bot.register_next_step_handler(message, self.process_registration_name)
+        if not self.if_start(message):
+            username = message.from_user.username
+            self.reg_data[username] = {}
+            if len(message.text.split(' ')) == 3:
+                self.reg_data[username]['fio'] = message.text
+                self.bot.send_message(message.chat.id, "Введите название компании:")
+                self.bot.register_next_step_handler(message, self.process_registration_company, username)
+            else:
+                self.bot.send_message(message.chat.id, "Фамилия, имя и отчество введены неверно. Повторите запрос")
+                self.bot.register_next_step_handler(message, self.process_registration_name)
 
     def process_registration_company(self, message, username):
-        # Сохраняем компанию
-        self.reg_data[username]['company'] = message.text
-        # Запрос email
-        self.bot.send_message(message.chat.id, "Введите ваш email:")
-        self.bot.register_next_step_handler(message, self.process_registration_email, username)
-
-    def process_registration_email(self, message, username):
-        # Сохраняем email
-        if self.is_email(message.text):
-            self.reg_data[username]['email'] = message.text
-            # Запрос номера телефона
-            self.bot.send_message(message.chat.id, "Введите ваш телефон:")
-            self.bot.register_next_step_handler(message, self.process_registration_phone, username)
-        else:
-            self.bot.send_message(message.chat.id, "Введён неправильный email, введите заново:")
+        if not self.if_start(message):
+            # Сохраняем компанию
+            self.reg_data[username]['company'] = message.text
+            # Запрос email
+            self.bot.send_message(message.chat.id, "Введите ваш email:")
             self.bot.register_next_step_handler(message, self.process_registration_email, username)
 
-    def process_registration_phone(self, message, username):
-        clear_phone = self.is_phone(message.text)
-        if clear_phone: # проверка номера телефона
-            self.reg_data[username]['phone'] = clear_phone
-            # Формируем регистрационные данные
-            registration_data = self.reg_data[username]
-            response = self.supabase_client.add_user(username, registration_data)
-            if response:
-                self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
+    def process_registration_email(self, message, username):
+        if not self.if_start(message):
+            # Сохраняем email
+            if self.is_email(message.text):
+                self.reg_data[username]['email'] = message.text
+                # Запрос номера телефона
+                self.bot.send_message(message.chat.id, "Введите ваш телефон:")
+                self.bot.register_next_step_handler(message, self.process_registration_phone, username)
             else:
-                self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
-            # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
-            self.create_keyboard(message.chat.id)
-            del self.reg_data[username]
-        else:
-            self.bot.send_message(message.chat.id, "Телефон введён с ошибкой, введите ещё раз:")
-            self.bot.register_next_step_handler(message, self.process_registration_phone, username)
+                self.bot.send_message(message.chat.id, "Введён неправильный email, введите заново:")
+                self.bot.register_next_step_handler(message, self.process_registration_email, username)
+
+    def process_registration_phone(self, message, username):
+        if not self.if_start(message):
+            clear_phone = self.is_phone(message.text)
+            if clear_phone: # проверка номера телефона
+                self.reg_data[username]['phone'] = clear_phone
+                # Формируем регистрационные данные
+                registration_data = self.reg_data[username]
+                response = self.supabase_client.add_user(username, registration_data)
+                if response:
+                    self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
+                else:
+                    self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
+                # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
+                self.create_keyboard(message.chat.id)
+                del self.reg_data[username]
+            else:
+                self.bot.send_message(message.chat.id, "Телефон введён с ошибкой, введите ещё раз:")
+                self.bot.register_next_step_handler(message, self.process_registration_phone, username)
 
     def is_phone(self, tel : str) -> str:
         tel = tel.replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
@@ -217,6 +224,13 @@ class TelegramBot:
         pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z.]+$"
         return re.match(pattern, text) is not None
 
+    def if_start(self, message):
+        if message.text.startswith('/start'):
+            self.bot.clear_step_handler_by_chat_id(message.chat.id)
+            self.start(message)
+            return True
+        else:
+            return False
 
     def process_claim_theme(self, message):
         username = message.from_user.username

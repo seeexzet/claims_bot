@@ -8,6 +8,8 @@ class SupabaseClient:
         load_dotenv()   # Загрузить переменные окружения из .env
         self.url: str = os.environ.get("SUPABASE_URL")
         self.anon_key: str = os.environ.get("SUPABASE_KEY")
+        self.email = os.environ.get("USER_MAIL")
+        self.password = os.environ.get("USER_PASS")
 
         self.table_username = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
@@ -27,19 +29,10 @@ class SupabaseClient:
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
 
-    def sign_in(self, email: str = None, password: str = None):
-        """
-        Выполнить аутентификацию пользователя. Если email и password не переданы,
-        они будут загружены из переменных окружения.
-        """
-        if email is None:
-            email = os.environ.get("USER_MAIL")
-        if password is None:
-            password = os.environ.get("USER_PASS")
-
+    def sign_in(self):
         auth_response = self.client.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
+            "email": self.email,
+            "password": self.password,
         })
         self.user = auth_response
         return auth_response
