@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     # Получить данные из таблицы до аутентификации
     response = supabase_client.get_data("sample_table").data
-    print("Данные из таблицы (без аутентификации):", response)
+    print("Данные из таблицы (без аутентификации): ", response)
 
     # Выполнить аутентификацию пользователя
     auth_response = supabase_client.sign_in()

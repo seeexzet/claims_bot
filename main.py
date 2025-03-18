@@ -88,7 +88,7 @@ class TelegramBot:
         markup.add(button4)
         markup.add(button5)
         markup.add(button6)
-        self.bot.send_message(chat_id, "Выберите приоритет заявки: ", reply_markup=markup)
+        self.bot.send_message(chat_id, "Выберите приоритет заявки:", reply_markup=markup)
 
     def handle_query(self, call):
         user = call.from_user

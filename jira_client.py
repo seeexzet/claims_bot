@@ -42,4 +42,4 @@ if __name__ == "__main__":
     # Получить данные из таблицы до аутентификации
     claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
     response = jira_client.create_claim('user1', claim_data)
-    print("Загружены данные:", response)
+    print("Загружены данные: ", response)
