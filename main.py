@@ -65,9 +65,9 @@ class TelegramBot:
         self.bot.send_message(message.chat.id,
                               "Список доступных команд:\n"
                               "/start - Начать работу с ботом\n"
-                              "/reg - Регистрация пользователя\n"
-                              "/claim - Оставить заявку\n"
-                              "/check - Проверить статус заявки\n"
+                              # "/reg - Регистрация пользователя\n"
+                              # "/claim - Оставить заявку\n"
+                              # "/check - Проверить статус заявки\n"
                               "/help - Получить помощь")
 
     def create_keyboard(self, chat_id):
@@ -157,7 +157,7 @@ class TelegramBot:
             self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
 
     def process_registration_name(self, message):
-        if not self.if_start(message):
+        if not self.if_start(message) and not self.if_help(message):
             username = message.from_user.username
             self.reg_data[username] = {}
             if len(message.text.split(' ')) == 3:
@@ -169,7 +169,7 @@ class TelegramBot:
                 self.bot.register_next_step_handler(message, self.process_registration_name)
 
     def process_registration_company(self, message, username):
-        if not self.if_start(message):
+        if not self.if_start(message) and not self.if_help(message):
             # Сохраняем компанию
             self.reg_data[username]['company'] = message.text
             # Запрос email
@@ -177,7 +177,7 @@ class TelegramBot:
             self.bot.register_next_step_handler(message, self.process_registration_email, username)
 
     def process_registration_email(self, message, username):
-        if not self.if_start(message):
+        if not self.if_start(message) and not self.if_help(message):
             # Сохраняем email
             if self.is_email(message.text):
                 self.reg_data[username]['email'] = message.text
@@ -189,7 +189,7 @@ class TelegramBot:
                 self.bot.register_next_step_handler(message, self.process_registration_email, username)
 
     def process_registration_phone(self, message, username):
-        if not self.if_start(message):
+        if not self.if_start(message) and not self.if_help(message):
             clear_phone = self.is_phone(message.text)
             if clear_phone: # проверка номера телефона
                 self.reg_data[username]['phone'] = clear_phone
@@ -231,9 +231,16 @@ class TelegramBot:
             return True
         else:
             return False
+    def if_help(self, message):
+        if message.text.startswith('/help'):
+            self.bot.clear_step_handler_by_chat_id(message.chat.id)
+            self.send_help(message)
+            return True
+        else:
+            return False
 
     def process_claim_theme(self, message):
-        if not self.if_start(message):
+        if not self.if_start(message) and not self.if_help(message):
             username = message.from_user.username
             if len(message.text) > 0:
                 self.claim_data[username]['theme'] = message.text
@@ -248,15 +255,24 @@ class TelegramBot:
                 self.bot.register_next_step_handler(message, self.process_claim_theme, username)
 
     def process_claim_text(self, message, username):
-        if not self.if_start(message):
-            if len(message.text) > 0:
+        if not self.if_start(message) and not self.if_help(message):
+            if len(message.text) > 1:
                 self.claim_data[username]['text'] = message.text
                 claim_data = self.claim_data[username]
-                response_claim = self.supabase_client.create_claim(username, claim_data)
-                print(response_claim)
-                if response_claim:
-                    self.bot.send_message(message.chat.id,
-                        f"Ваша заявка принята. Номер заявки: {response_claim[0]['id']}. Статус заявки: {response_claim[0][self.supabase_client.field_claims_status]}")
+                print('claim_data=', claim_data)
+                # добавление заявки в Jira
+                response_claim_jira = self.jira_client.create_claim(username, claim_data)
+                print('response_claim_jira=', response_claim_jira)
+                if response_claim_jira:
+                    response_claim_supabase = self.supabase_client.create_claim(username, claim_data)
+                    print('response_claim_supabase=', response_claim_supabase)
+                    if response_claim_supabase:
+                        self.bot.send_message(message.chat.id,
+                            f"Ваша заявка принята. \nНомер заявки в Supabase: {response_claim_supabase[0]['id']}. Статус заявки в Supabase: {response_claim_supabase[0][self.supabase_client.field_claims_status]} \n"
+                            f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
+                    else:
+                        self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
+                            f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
                 else:
                     self.bot.send_message(message.chat.id, "Не удалось создать заявку")
             else:
@@ -265,7 +281,7 @@ class TelegramBot:
             self.create_keyboard(message.chat.id)
 
     def handle_text(self, message):
-        self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту." )
+        self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
         self.create_keyboard(message.chat.id)
 
     def run(self):

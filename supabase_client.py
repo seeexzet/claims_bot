@@ -80,14 +80,14 @@ class SupabaseClient:
                 return None
         return None
 
-    def create_claim(self, username: str, claim_data: dict, claim_status: str = 'new'):
+    def create_claim(self, username: str, claim_data: dict):
         user_id = self.get_user_id_by_username(username)
         data = {
             self.field_claims_user_id : user_id,
             self.field_claims_text: claim_data["text"],
             self.field_claims_theme: claim_data["theme"],
             self.field_claims_priority: claim_data["priority"],
-            self.field_claims_status : claim_status
+            self.field_claims_status: self.field_claims_text_new_status
         }
         print(data)
         try:
@@ -98,11 +98,18 @@ class SupabaseClient:
             return None
 
     def check_claims_status(self, username: str):
-        user_id = self.get_user_id_by_username(username)
-        response = self.client.table(self.table_claims).select("*").eq(self.field_claims_user_id, user_id).execute()
-        # response = self.client.table(self.table_claims).select(self.field_claims_status).eq(self.field_claims_user_id, user_id).execute()
-        data = response.data
-        return data
+        if self.check_user(username):
+            user_id = self.get_user_id_by_username(username)
+            try:
+                response = self.client.table(self.table_claims).select("*").eq(self.field_claims_user_id, user_id).execute()
+                # response = self.client.table(self.table_claims).select(self.field_claims_status).eq(self.field_claims_user_id, user_id).execute()
+                data = response.data
+                return data
+            except Exception as e:
+                print(f"Error check status for user '{username}': {str(e)}")
+                return False
+        return False
+
 
 
 if __name__ == "__main__":
@@ -129,9 +136,10 @@ if __name__ == "__main__":
     # print("Проверка вставки данных:", response_insert_data)
 
     # Проверка на создание заявки
-    response_add_claim = supabase_client.create_claim("@tgname", "not everything is bad")
+    claim_data = {'priority': 'low', 'theme': 'Всё плохо', 'text': 'Все очень плохо'}
+    response_add_claim = supabase_client.create_claim("@tgname", claim_data)
     print("Проверка на создание заявки:", response_add_claim)
 
     # Проверка статуса заявок
-    response_check_status = supabase_client.check_claims_status("@tgname")
+    response_check_status = supabase_client.check_claims_status("user1")
     print("Проверка статуса заявок:", response_check_status)

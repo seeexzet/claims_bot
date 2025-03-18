@@ -2,14 +2,10 @@ from dotenv import load_dotenv
 import os
 from jira import JIRA
 
-import requests
-import json
-
 # author 10042
 # status 10043
 # theme 10044
 # description 10045
-# priority 10046
 
 class JiraClient:
     def __init__(self):
@@ -23,25 +19,27 @@ class JiraClient:
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
         self.jira = JIRA(options=jira_options, basic_auth=(self.email, self.token))
 
-        # Пример получения информации о проекте
-        # project = self.jira.project('PROJECT_KEY')
-        # print(f"Project name: {project.name}")
-
-    def add_claim(self, theme, description, priority, status):
-        new_issue = self.jira.create_issue(
-            project=self.project_key,
-            summary=theme,
-            description=description,
-            customfield_10042='Автор, автор...',
-            priority={"name": priority},
-            issuetype={'name': 'Task'}  # можно указать тип задачи: Bug, Task, Story и т.д.
-        )
-        print(f"Задача создана: {new_issue.key}")
+    def create_claim(self, username, claim_data): # status):
+        try:
+            new_issue = self.jira.create_issue(
+                project=self.project_key,
+                summary=claim_data['theme'],
+                description=claim_data['text'],
+                customfield_10042=username,
+                priority={"name": claim_data['priority']},
+                issuetype={'name': 'Task'}  # можно указать тип задачи: Bug, Task, Story и т.д.
+            )
+            print(f"Задача создана: {new_issue.key}, ссылка: \n{new_issue.permalink()}")
+            return new_issue
+        except Exception as e:
+            print(f"Error creating claim for user '{username}': {str(e)}")
+            return None
 
 
 if __name__ == "__main__":
     jira_client = JiraClient()
 
     # Получить данные из таблицы до аутентификации
-    response = jira_client.add_claim("theme", "description", "High", "Open")
+    claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
+    response = jira_client.create_claim('user1', claim_data)
     print("Загружены данные:", response)
