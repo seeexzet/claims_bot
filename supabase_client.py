@@ -25,6 +25,7 @@ class SupabaseClient:
         self.field_claims_text = os.environ.get("FIELD_CLAIMS_TEXT")
         self.field_claims_status = os.environ.get("FIELD_CLAIMS_STATUS")
         self.field_claims_text_new_status = os.environ.get("FIELD_CLAIMS_TEXT_NEW_STATUS")
+        self.field_claims_number_in_jira = os.environ.get("FIELD_CLAIMS_NUMBER_IN_JIRA")
         # Создать клиента Supabase с использованием анонимного ключа
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
@@ -97,11 +98,11 @@ class SupabaseClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def check_claims_status(self, username: str):
+    def check_claim_status(self, username: str):
         if self.check_user(username):
-            user_id = self.get_user_id_by_username(username)
+            user_id = self.get_user_id_by_username(username) # находим user_id
             try:
-                response = self.client.table(self.table_claims).select("*").eq(self.field_claims_user_id, user_id).execute()
+                response = self.client.table(self.table_claims).select("*").eq(self.field_claims_user_id, user_id).execute() # поиск всех заявок
                 # response = self.client.table(self.table_claims).select(self.field_claims_status).eq(self.field_claims_user_id, user_id).execute()
                 data = response.data
                 return data
@@ -141,5 +142,5 @@ if __name__ == "__main__":
     print("Проверка на создание заявки:", response_add_claim)
 
     # Проверка статуса заявок
-    response_check_status = supabase_client.check_claims_status("user1")
+    response_check_status = supabase_client.check_claim_status("user1")
     print("Проверка статуса заявок:", response_check_status)

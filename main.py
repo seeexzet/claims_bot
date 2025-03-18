@@ -2,6 +2,8 @@ import telebot
 from telebot import types
 import os
 import re
+import time
+import requests
 from dotenv import load_dotenv
 from supabase_client import SupabaseClient
 from jira_client import JiraClient
@@ -116,7 +118,7 @@ class TelegramBot:
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали проверить статус заявки")
-                response_check_status = self.supabase_client.check_claims_status(username)
+                response_check_status = self.supabase_client.check_claim_status(username)
                 if response_check_status:
                     for resp in response_check_status:
                         self.bot.send_message(call.message.chat.id,
@@ -285,10 +287,18 @@ class TelegramBot:
         self.create_keyboard(message.chat.id)
 
     def run(self):
-        self.bot.polling()
+        self.bot.polling(non_stop=True, timeout=30, long_polling_timeout=30)
 
 if __name__ == '__main__':
     supabase_client = SupabaseClient()
     jira_client = JiraClient()
     telegram_bot = TelegramBot(supabase_client, jira_client)
-    telegram_bot.run()
+    while True:
+        try:
+            telegram_bot.run()
+        except requests.exceptions.ReadTimeout:
+            print("Произошёл тайм-аут. Повтор через 5 секунд...")
+            time.sleep(5)
+        except Exception as e:
+            print(f"Неожиданная ошибка: {e}")
+            time.sleep(5)
