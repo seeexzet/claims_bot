@@ -31,6 +31,10 @@ class TelegramBot:
         self.low_priority = os.environ.get("LOW_PRIORITY")
         self.middle_priority = os.environ.get("MIDDLE_PRIORITY")
         self.high_priority = os.environ.get("HIGH_PRIORITY")
+        self.field_claims_number_in_jira = os.environ.get("FIELD_CLAIMS_NUMBER_IN_JIRA")
+        self.todo_status = os.environ.get("GIRA_TODO_STATUS")
+        self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
+        self.done_status = os.environ.get("GIRA_TODO_DONE")
 
         # экземпляр SupabaseClient
         self.supabase_client = supabase_client
@@ -118,11 +122,21 @@ class TelegramBot:
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали проверить статус заявки")
-                response_check_status = self.supabase_client.check_claim_status(username)
-                if response_check_status:
-                    for resp in response_check_status:
+                jira_claims_numbers = self.supabase_client.get_claims_numbers(username)
+                if jira_claims_numbers:
+                    for number in jira_claims_numbers:
+                        jira_status = jira_client.check_claim_status(number)
+                        if jira_status.lower() == self.todo_status:
+                            claim_status = "К выполнению"
+                        elif jira_status.lower() == self.inprogress_status:
+                            claim_status = "В процессе выполнения"
+                        elif jira_status.lower() == self.done_status:
+                            claim_status = "Завершено"
+                        else:
+                            claim_status = "Неизвестно"
                         self.bot.send_message(call.message.chat.id,
-                            f"Статус заявки №{resp['id']} сейчас {resp[self.supabase_client.field_claims_status]}.\n\nТекст заявки: {resp[self.supabase_client.field_claims_text]}")
+                            # f"Статус заявки №{resp['id']} сейчас {resp[self.supabase_client.field_claims_status]}.\n\nТекст заявки: {resp[self.supabase_client.field_claims_text]}")
+                            f"Статус заявки №{number} сейчас: {claim_status}.") #\n\nТекст заявки: " {resp[self.supabase_client.field_claims_text]}")
                     self.create_keyboard(call.message.chat.id)
                 else:
                     self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
@@ -141,6 +155,7 @@ class TelegramBot:
         elif call.data == 'button6':
             # выбран высокий уровень обработки заявок
             self.handle_priority_selection(call, username, self.high_priority, "высокий")
+
     def handle_priority_selection(self, call, username, priority_level, priority_name):
         self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
         self.claim_data[username] = {'priority': priority_level}
@@ -264,14 +279,13 @@ class TelegramBot:
                 print('claim_data=', claim_data)
                 # добавление заявки в Jira
                 response_claim_jira = self.jira_client.create_claim(username, claim_data)
-                print('response_claim_jira=', response_claim_jira)
                 if response_claim_jira:
-                    response_claim_supabase = self.supabase_client.create_claim(username, claim_data)
-                    print('response_claim_supabase=', response_claim_supabase)
+                    jira_claim_number = int(response_claim_jira.key.split('-')[1])
+                    response_claim_supabase = self.supabase_client.create_claim(username, claim_data, jira_claim_number)
                     if response_claim_supabase:
                         self.bot.send_message(message.chat.id,
-                            f"Ваша заявка принята. \nНомер заявки в Supabase: {response_claim_supabase[0]['id']}. Статус заявки в Supabase: {response_claim_supabase[0][self.supabase_client.field_claims_status]} \n"
-                            f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
+                            f"Ваша заявка принята. \nНомер заявки в Supabase: {response_claim_supabase[0]['id']} \n"
+                            f"Номер заявки в Jira: {response_claim_jira.key.split('-')[1]}, ссылка: \n{response_claim_jira.permalink()}")
                     else:
                         self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
                             f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
@@ -287,18 +301,19 @@ class TelegramBot:
         self.create_keyboard(message.chat.id)
 
     def run(self):
-        self.bot.polling(non_stop=True, timeout=30, long_polling_timeout=30)
+        self.bot.polling(non_stop=True) # non_stop=True, timeout=30, long_polling_timeout=30)
 
 if __name__ == '__main__':
     supabase_client = SupabaseClient()
     jira_client = JiraClient()
     telegram_bot = TelegramBot(supabase_client, jira_client)
-    while True:
-        try:
-            telegram_bot.run()
-        except requests.exceptions.ReadTimeout:
-            print("Произошёл тайм-аут. Повтор через 5 секунд...")
-            time.sleep(5)
-        except Exception as e:
-            print(f"Неожиданная ошибка: {e}")
-            time.sleep(5)
+    # while True:
+    #     try:
+    #         telegram_bot.run()
+    #     except requests.exceptions.ReadTimeout:
+    #         print("Произошёл тайм-аут. Повтор через 5 секунд...")
+    #         time.sleep(5)
+    #     except Exception as e:
+    #         print(f"Неожиданная ошибка: {e}")
+    #         time.sleep(5)
+    telegram_bot.run()

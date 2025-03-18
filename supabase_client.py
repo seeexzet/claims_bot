@@ -23,7 +23,6 @@ class SupabaseClient:
         self.field_claims_priority = os.environ.get("FIELD_CLAIMS_PRIORITY")
         self.field_claims_theme = os.environ.get("FIELD_CLAIMS_THEME")
         self.field_claims_text = os.environ.get("FIELD_CLAIMS_TEXT")
-        self.field_claims_status = os.environ.get("FIELD_CLAIMS_STATUS")
         self.field_claims_text_new_status = os.environ.get("FIELD_CLAIMS_TEXT_NEW_STATUS")
         self.field_claims_number_in_jira = os.environ.get("FIELD_CLAIMS_NUMBER_IN_JIRA")
         # Создать клиента Supabase с использованием анонимного ключа
@@ -81,14 +80,14 @@ class SupabaseClient:
                 return None
         return None
 
-    def create_claim(self, username: str, claim_data: dict):
+    def create_claim(self, username: str, claim_data: dict, jira_claim_number: int):
         user_id = self.get_user_id_by_username(username)
         data = {
             self.field_claims_user_id : user_id,
             self.field_claims_text: claim_data["text"],
             self.field_claims_theme: claim_data["theme"],
             self.field_claims_priority: claim_data["priority"],
-            self.field_claims_status: self.field_claims_text_new_status
+            self.field_claims_number_in_jira: jira_claim_number
         }
         print(data)
         try:
@@ -98,16 +97,17 @@ class SupabaseClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def check_claim_status(self, username: str):
+    def get_claims_numbers(self, username: str):
         if self.check_user(username):
             user_id = self.get_user_id_by_username(username) # находим user_id
             try:
-                response = self.client.table(self.table_claims).select("*").eq(self.field_claims_user_id, user_id).execute() # поиск всех заявок
+                response = self.client.table(self.table_claims).select(self.field_claims_number_in_jira).eq(self.field_claims_user_id, user_id).execute() # поиск всех заявок
                 # response = self.client.table(self.table_claims).select(self.field_claims_status).eq(self.field_claims_user_id, user_id).execute()
                 data = response.data
-                return data
+                claim_numbers = [claim.get(self.field_claims_number_in_jira) for claim in data]
+                return claim_numbers
             except Exception as e:
-                print(f"Error check status for user '{username}': {str(e)}")
+                print(f"Error get claim numbers for user '{username}': {str(e)}")
                 return False
         return False
 
@@ -141,6 +141,6 @@ if __name__ == "__main__":
     response_add_claim = supabase_client.create_claim("@tgname", claim_data)
     print("Проверка на создание заявки:", response_add_claim)
 
-    # Проверка статуса заявок
-    response_check_status = supabase_client.check_claim_status("user1")
-    print("Проверка статуса заявок:", response_check_status)
+    # Проверка номеров заявок
+    response_get_claim_numbers = supabase_client.get_claims_numbers("user1")
+    print("У пользователя есть заявки:", response_get_claim_numbers)

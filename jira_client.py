@@ -26,7 +26,7 @@ class JiraClient:
             'project': self.project_key,
             'summary': claim_data['theme'],
             'description': claim_data['text'],
-            self.author_field: username,  # customfield_10042=username,
+            self.author_field: username,
             'priority': {"name": claim_data['priority']},
             'issuetype': {'name': self.typetask_field}  # можно указать тип задачи: Bug, Task, Story и т.д.
         }
@@ -38,14 +38,17 @@ class JiraClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-        def check_claim_status(self):
-            pass
+    def check_claim_status(self, claim_number):
+        issue = self.jira.issue(self.project_key+'-'+str(claim_number))
+        return issue.fields.status.name
 
 
 if __name__ == "__main__":
     jira_client = JiraClient()
 
     # Получить данные из таблицы до аутентификации
-    claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
-    response = jira_client.create_claim('user1', claim_data)
-    print("Загружены данные: ", response)
+    # claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
+    # response = jira_client.create_claim('user1', claim_data)
+    # print("Загружены данные: ", response)
+
+    print(jira_client.check_claim_status(14))
