@@ -284,8 +284,8 @@ class TelegramBot:
                     response_claim_supabase = self.supabase_client.create_claim(username, claim_data, jira_claim_number)
                     if response_claim_supabase:
                         self.bot.send_message(message.chat.id,
-                            f"Ваша заявка принята. \nНомер заявки в Supabase: {response_claim_supabase[0]['id']} \n"
-                            f"Номер заявки в Jira: {response_claim_jira.key.split('-')[1]}, ссылка: \n{response_claim_jira.permalink()}")
+                            f"<b>Ваша заявка принята</b>. \n\nНомер заявки в Supabase: <b>{response_claim_supabase[0]['id']}</b> \n"
+                            f"Номер заявки в Jira: <b>{response_claim_jira.key.split('-')[1]}</b>, ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
                     else:
                         self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
                             f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
@@ -301,7 +301,7 @@ class TelegramBot:
         self.create_keyboard(message.chat.id)
 
     def run(self):
-        self.bot.polling(non_stop=True) # non_stop=True, timeout=30, long_polling_timeout=30)
+        self.bot.polling() # non_stop=True, timeout=30, long_polling_timeout=30)
 
 if __name__ == '__main__':
     supabase_client = SupabaseClient()
