@@ -128,7 +128,7 @@ if __name__ == "__main__":
     print("Данные из таблицы (после аутентификации):", response)
 
     # Проверка на наличие пользователя в БД
-    response_check_user = supabase_client.check_user("user1")
+    response_check_user = supabase_client.check_user("user2")
     print("Проверка наличия пользователя:", response_check_user)
 
     # # Проверка на вставку данных в БД

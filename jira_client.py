@@ -29,7 +29,7 @@ class JiraClient:
                 priority={"name": claim_data['priority']},
                 issuetype={'name': 'Task'}  # можно указать тип задачи: Bug, Task, Story и т.д.
             )
-            print(f"Задача создана: {new_issue.key}, ссылка: \n{new_issue.permalink()}")
+            print(f"Create claim: {new_issue.key}, link: \n{new_issue.permalink()}")
             return new_issue
         except Exception as e:
             print(f"Error creating claim for user '{username}': {str(e)}")
