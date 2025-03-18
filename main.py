@@ -4,6 +4,7 @@ import os
 import re
 from dotenv import load_dotenv
 from supabase_client import SupabaseClient
+from jira_client import JiraClient
 
 # Регистрация пользователей в БД с нашей стороны, ФИО, имейл, телефон, компания.
 # Пользователь из БД бота совпадает с пользователем джиры, под соответствующих акком джиры создается заявка в том или ином проекте
@@ -21,7 +22,7 @@ from supabase_client import SupabaseClient
 # 3 - уведомлять (подписка на обновления) об изменении статус и новых апдейтах в тех заявках, на которые пользователь «подписался»
 
 class TelegramBot:
-    def __init__(self):
+    def __init__(self, supabase_client, jira_client):
         load_dotenv(override=True)
         self.TG_TOKEN = os.getenv("TG_TOKEN")
         self.bot = telebot.TeleBot(self.TG_TOKEN)
@@ -29,12 +30,17 @@ class TelegramBot:
         self.middle_priority = os.environ.get("MIDDLE_PRIORITY")
         self.high_priority = os.environ.get("HIGH_PRIORITY")
 
-        # Глобальный экземпляр SupabaseClient
-        self.supabase_client = SupabaseClient()
+        # экземпляр SupabaseClient
+        self.supabase_client = supabase_client
+        # self.supabase_client = SupabaseClient()
         self.supabase_client.sign_in()
         self.register_handlers()
         self.reg_data = {}
         self.claim_data = {}
+
+        # экземпляр JiraClient
+        self.jira_client = jira_client
+
 
     def register_handlers(self):
         # Обработчики команд
@@ -124,28 +130,22 @@ class TelegramBot:
 
         elif call.data == 'button4':
             # выбран низкий статус заявки
-            self.bot.send_message(call.message.chat.id, "Выбран низкий уровень статуса заявок")
-            self.claim_data[username] = {}
-            self.claim_data[username]['priority'] = self.low_priority
-            msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
-            self.bot.register_next_step_handler(msg, self.process_claim_theme)
-
+            self.handle_priority_selection(call, username, self.low_priority, "низкий")
 
         elif call.data == 'button5':
             # выбран средний уровень обработки заявок
-            self.bot.send_message(call.message.chat.id, "Выбран средний уровень статуса заявок")
-            self.claim_data[username] = {}
-            self.claim_data[username]['priority'] = self.middle_priority
-            msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
-            self.bot.register_next_step_handler(msg, self.process_claim_theme)
+            self.handle_priority_selection(call, username, self.middle_priority, "средний")
 
         elif call.data == 'button6':
             # выбран высокий уровень обработки заявок
-            self.bot.send_message(call.message.chat.id, "Выбран высокий уровень статуса заявок")
-            self.claim_data[username] = {}
-            self.claim_data[username]['priority'] = self.high_priority
-            msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
-            self.bot.register_next_step_handler(msg, self.process_claim_theme)
+            self.handle_priority_selection(call, username, self.high_priority, "высокий")
+    def handle_priority_selection(self, call, username, priority_level, priority_name):
+        self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
+        self.claim_data[username] = {'priority': priority_level}
+        self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                           reply_markup=None)
+        msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
+        self.bot.register_next_step_handler(msg, self.process_claim_theme)
 
     def registration(self, username, call):
         if not self.supabase_client.check_user(username):
@@ -233,42 +233,46 @@ class TelegramBot:
             return False
 
     def process_claim_theme(self, message):
-        username = message.from_user.username
-        if len(message.text) > 0:
-            self.claim_data[username]['theme'] = message.text
-            print(self.claim_data)
-            print(message)
-            print(username)
-            # Запрос детального описания заявки
-            self.bot.send_message(message.chat.id, "Введите описание заявки:")
-            self.bot.register_next_step_handler(message, self.process_claim_text, username)
-        else:
-            self.bot.send_message(message.chat.id, "Тема введена неправильно, введите заново:")
-            self.bot.register_next_step_handler(message, self.process_claim_theme, username)
+        if not self.if_start(message):
+            username = message.from_user.username
+            if len(message.text) > 0:
+                self.claim_data[username]['theme'] = message.text
+                # print(self.claim_data)
+                # print(message)
+                # print(username)
+                # Запрос детального описания заявки
+                self.bot.send_message(message.chat.id, "Введите описание заявки:")
+                self.bot.register_next_step_handler(message, self.process_claim_text, username)
+            else:
+                self.bot.send_message(message.chat.id, "Тема введена неправильно, введите заново:")
+                self.bot.register_next_step_handler(message, self.process_claim_theme, username)
 
     def process_claim_text(self, message, username):
-        if len(message.text) > 0:
-            self.claim_data[username]['text'] = message.text
-            claim_data = self.claim_data[username]
-            response_claim = self.supabase_client.create_claim(username, claim_data)
-            print(response_claim)
-            if response_claim:
-                self.bot.send_message(message.chat.id,
-                    f"Ваша заявка принята. Номер заявки: {response_claim[0]['id']}. Статус заявки: {response_claim[0][self.supabase_client.field_claims_status]}")
+        if not self.if_start(message):
+            if len(message.text) > 0:
+                self.claim_data[username]['text'] = message.text
+                claim_data = self.claim_data[username]
+                response_claim = self.supabase_client.create_claim(username, claim_data)
+                print(response_claim)
+                if response_claim:
+                    self.bot.send_message(message.chat.id,
+                        f"Ваша заявка принята. Номер заявки: {response_claim[0]['id']}. Статус заявки: {response_claim[0][self.supabase_client.field_claims_status]}")
+                else:
+                    self.bot.send_message(message.chat.id, "Не удалось создать заявку")
             else:
-                self.bot.send_message(message.chat.id, "Не удалось создать заявку")
-        else:
-            self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
-            self.bot.register_next_step_handler(message, self.process_claim_text, username)
-        self.create_keyboard(message.chat.id)
+                self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
+                self.bot.register_next_step_handler(message, self.process_claim_text, username)
+            self.create_keyboard(message.chat.id)
 
     def handle_text(self, message):
-        self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту. " )
+        self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту." )
         self.create_keyboard(message.chat.id)
 
     def run(self):
         self.bot.polling()
 
 if __name__ == '__main__':
-    telegram_bot = TelegramBot()
+    supabase_client = SupabaseClient()
+    jira_client = JiraClient()
+    telegram_bot = TelegramBot(supabase_client, jira_client)
     telegram_bot.run()
