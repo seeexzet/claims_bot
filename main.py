@@ -126,32 +126,16 @@ class TelegramBot:
                 self.bot.send_message(call.message.chat.id, "Вы выбрали проверить статус заявки")
                 jira_claims_numbers = self.supabase_client.get_claims_numbers(username) # нужно не через Supabase
                 if jira_claims_numbers:
+                    buttons = []
                     for number in jira_claims_numbers:
-                        jira_status = jira_client.check_claim_status(number, username)  # это очень плохо
-                        if jira_status['status'].lower() == self.todo_status:
-                            claim_status = "К выполнению"
-                        elif jira_status['status'].lower() == self.inprogress_status:
-                            claim_status = "В процессе выполнения"
-                        elif jira_status['status'].lower() == self.done_status:
-                            claim_status = "Завершено"
-                        else:
-                            claim_status = "Неизвестно"
-                            # buttons = []
-                            # for number in jira_claims_numbers:
-                            #     button = types.InlineKeyboardButton(f"Проверить статус заявки №{number}",
-                            #                                   callback_data=f'check_status_{number}')
-                            #     buttons.append([button])  # Каждая кнопка на новой строке
-                            #
-                            # # Создаем клавиатуру с этим набором кнопок
-                            # keyboard = types.InlineKeyboardMarkup(buttons)
-                            #
-                            # # Отправляем сообщение с клавиатурой
-                            # self.bot.send_message(call.message.chat_id, "Нажмите на кнопку для проверки статуса заявки:",
-                            #                       reply_markup=keyboard)
-                        self.bot.send_message(call.message.chat.id,
-                            # f"Статус заявки №{resp['id']} сейчас {resp[self.supabase_client.field_claims_status]}.\n\nТекст заявки: {resp[self.supabase_client.field_claims_text]}")
-                            f"Статус заявки №{number} сейчас: {claim_status}.") #\n\nТекст заявки: " {resp[self.supabase_client.field_claims_text]}")
-                    self.create_keyboard(call.message.chat.id)
+                        button = types.InlineKeyboardButton(f"№{number}",
+                                                            callback_data=f'claim_{number}')
+                        buttons.append(button)
+                    markup = types.InlineKeyboardMarkup(row_width=3)
+                    markup.add(*buttons)
+                    self.bot.send_message(call.message.chat.id,
+                                        "Выберите заявку для проверки её статуса:",
+                                        reply_markup=markup)
                 else:
                     self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
                     self.create_keyboard(call.message.chat.id)
@@ -173,6 +157,10 @@ class TelegramBot:
         elif call.data == 'button7':
             # выбран высокий уровень обработки заявок
             self.handle_priority_selection(call, username, self.high_priority, "высокий")
+
+        elif call.data.startswith('claim_'):
+            number = call.data.split('_')[1]
+            self.get_claim_status_without_checking(call.message, username, number)
 
     def handle_priority_selection(self, call, username, priority_level, priority_name):
         self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
@@ -317,9 +305,9 @@ class TelegramBot:
 
     def get_claim_status(self, call, username):
         self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
-        self.bot.register_next_step_handler(call.message, self.get_request_claim_number, username)
+        self.bot.register_next_step_handler(call.message, self.get_claim_status_with_checking, username)
 
-    def get_request_claim_number(self, message, username):
+    def get_claim_status_with_checking(self, message, username):
         if self.if_start(message) or self.if_help(message):
             return
 
@@ -335,11 +323,19 @@ class TelegramBot:
 
     def send_invalid_claim_message(self, message, username):
         self.bot.send_message(message.chat.id, "Номер введён неправильно, повторите:")
-        self.bot.register_next_step_handler(message, self.get_request_claim_number, username)
+        self.bot.register_next_step_handler(message, self.get_claim_status_with_checking, username)
 
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
         self.create_keyboard(message.chat.id)
+
+    def get_claim_status_without_checking(self, message, username, number):
+        claim_info = self.jira_client.check_claim_status(number, username)
+        if claim_info:
+            self.bot.send_message(message.chat.id, f"Статус заявки: <b>{claim_info['status']}</b> \n\nТема заявки:\n{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}", parse_mode='HTML')
+        else:
+            self.send_invalid_claim_message(message, username)
+
 
     def run(self):
         self.bot.polling() # non_stop=True, timeout=30, long_polling_timeout=30)
