@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
 from jira import JIRA
+from jira.exceptions import JIRAError
 
 # author 10042
 # status 10043
@@ -38,9 +39,21 @@ class JiraClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def check_claim_status(self, claim_number):
-        issue = self.jira.issue(self.project_key+'-'+str(claim_number))
-        return issue.fields.status.name
+    def check_claim_status(self, claim_number, username):
+        try:
+            issue = self.jira.issue(self.project_key+'-'+str(claim_number))
+            value_author = getattr(issue.fields, self.author_field, 'Поле не найдено')
+            if value_author == username:
+                claim_info = {}
+                claim_info['status'] = issue.fields.status.name
+                claim_info['summary'] = issue.fields.summary
+                claim_info['description'] = issue.fields.description
+                return claim_info
+            else:
+                # print('Не ваша заявка')
+                return None
+        except JIRAError as e:
+            return None
 
 
 if __name__ == "__main__":
@@ -51,4 +64,5 @@ if __name__ == "__main__":
     # response = jira_client.create_claim('user1', claim_data)
     # print("Загружены данные: ", response)
 
-    print(jira_client.check_claim_status(14))
+    print(jira_client.check_claim_status(30))
+    print('---')
