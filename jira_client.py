@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
+from datetime import datetime
 import os
 from jira import JIRA
+from jira.exceptions import JIRAError
 
 # author 10042
 # status 10043
@@ -38,9 +40,51 @@ class JiraClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def check_claim_status(self, claim_number):
-        issue = self.jira.issue(self.project_key+'-'+str(claim_number))
-        return issue.fields.status.name
+    def check_claim_status(self, claim_number, username):
+        try:
+            issue = self.jira.issue(self.project_key+'-'+str(claim_number))
+            value_author = getattr(issue.fields, self.author_field, 'Поле не найдено')
+            if value_author == username:
+                comments = issue.fields.comment.comments
+                if comments:
+                    last_comment = comments[-1].body
+                    last_comment_author = comments[-1].author.displayName
+                    last_comment_created = comments[-1].created
+                else:
+                    last_comment = 'Тестовое данное для проверки' #None
+                    last_comment_author = 'Тестовое данное для проверки' #None
+                    last_comment_created = issue.fields.updated #None ЗДЕСЬ ТЕСТОВОЕ ДАННОЕ ДЛЯ ПРОВЕРКИ
+
+                return {
+                    'status': issue.fields.status.name,
+                    'last_update': self.readable_time(issue.fields.updated),
+                    'summary': issue.fields.summary,
+                    'description': issue.fields.description,
+                    'last_comment': {
+                        'text': last_comment,
+                        'author': last_comment_author,
+                        'created': self.readable_time(last_comment_created)
+                    } if last_comment else None
+                }
+            else:
+                # print('Не ваша заявка')
+                return None
+        except JIRAError as e:
+            return None
+
+    def add_comment_to_claim(self, claim_number, username, comment_text):
+        try:
+            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
+            value_author = getattr(issue.fields, self.author_field, 'Поле не найдено')
+            if value_author == username:
+                return self.jira.add_comment(self.project_key+'-'+str(claim_number), comment_text)
+            else:
+                return None
+        except JIRAError as e:
+            return None
+
+    def readable_time(self, original_time):
+        return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%d.%m.%Y %H:%M:%S")
 
 
 if __name__ == "__main__":
@@ -51,4 +95,8 @@ if __name__ == "__main__":
     # response = jira_client.create_claim('user1', claim_data)
     # print("Загружены данные: ", response)
 
-    print(jira_client.check_claim_status(14))
+    print(jira_client.check_claim_status(30, "Simm20"))
+
+    print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
+    print('---')
+

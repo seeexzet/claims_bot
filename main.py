@@ -1,3 +1,4 @@
+import jira
 import telebot
 from telebot import types
 import os
@@ -78,22 +79,24 @@ class TelegramBot:
 
     def create_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
+        # button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
         button2 = types.InlineKeyboardButton('Оставить заявку', callback_data='button2')
-        button3 = types.InlineKeyboardButton('Проверить статус заявки', callback_data='button3')
-        markup.add(button1)
+        button3 = types.InlineKeyboardButton('Все открытые заявки', callback_data='button3')
+        button4 = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button4')
+        # markup.add(button1)
         markup.add(button2)
         markup.add(button3)
+        markup.add(button4)
         self.bot.send_message(chat_id, "Выберите одну из кнопок:", reply_markup=markup)
 
     def priority_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        button4 = types.InlineKeyboardButton('Низкий', callback_data='button4')
-        button5 = types.InlineKeyboardButton('Средний', callback_data='button5')
-        button6 = types.InlineKeyboardButton('Высокий', callback_data='button6')
-        markup.add(button4)
+        button5 = types.InlineKeyboardButton('Низкий', callback_data='button5')
+        button6 = types.InlineKeyboardButton('Средний', callback_data='button6')
+        button7 = types.InlineKeyboardButton('Высокий', callback_data='button7')
         markup.add(button5)
         markup.add(button6)
+        markup.add(button7)
         self.bot.send_message(chat_id, "Выберите приоритет заявки:", reply_markup=markup)
 
     def handle_query(self, call):
@@ -105,7 +108,7 @@ class TelegramBot:
 
         if call.data == 'button1':
             self.bot.answer_callback_query(call.id, "Вы нажали Регистрация пользователя")
-            self.registration(username, call)
+            self.registration(call, username)
 
         elif call.data == 'button2':
             self.bot.answer_callback_query(call.id, "Вы нажали Оставить заявку")
@@ -122,22 +125,18 @@ class TelegramBot:
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали проверить статус заявки")
-                jira_claims_numbers = self.supabase_client.get_claims_numbers(username)
+                jira_claims_numbers = self.supabase_client.get_claims_numbers(username) # нужно не через Supabase
                 if jira_claims_numbers:
+                    buttons = []
                     for number in jira_claims_numbers:
-                        jira_status = jira_client.check_claim_status(number)
-                        if jira_status.lower() == self.todo_status:
-                            claim_status = "К выполнению"
-                        elif jira_status.lower() == self.inprogress_status:
-                            claim_status = "В процессе выполнения"
-                        elif jira_status.lower() == self.done_status:
-                            claim_status = "Завершено"
-                        else:
-                            claim_status = "Неизвестно"
-                        self.bot.send_message(call.message.chat.id,
-                            # f"Статус заявки №{resp['id']} сейчас {resp[self.supabase_client.field_claims_status]}.\n\nТекст заявки: {resp[self.supabase_client.field_claims_text]}")
-                            f"Статус заявки №{number} сейчас: {claim_status}.") #\n\nТекст заявки: " {resp[self.supabase_client.field_claims_text]}")
-                    self.create_keyboard(call.message.chat.id)
+                        button = types.InlineKeyboardButton(f"№{number}",
+                                                            callback_data=f'claim_{number}')
+                        buttons.append(button)
+                    markup = types.InlineKeyboardMarkup(row_width=3)
+                    markup.add(*buttons)
+                    self.bot.send_message(call.message.chat.id,
+                                        "Выберите заявку для проверки её статуса:",
+                                        reply_markup=markup)
                 else:
                     self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
                     self.create_keyboard(call.message.chat.id)
@@ -145,16 +144,28 @@ class TelegramBot:
                 self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
 
         elif call.data == 'button4':
+            # посмотреть статус конкретной заявки
+            self.get_claim_status(call, username)
+
+        elif call.data == 'button5':
             # выбран низкий статус заявки
             self.handle_priority_selection(call, username, self.low_priority, "низкий")
 
-        elif call.data == 'button5':
+        elif call.data == 'button6':
             # выбран средний уровень обработки заявок
             self.handle_priority_selection(call, username, self.middle_priority, "средний")
 
-        elif call.data == 'button6':
+        elif call.data == 'button7':
             # выбран высокий уровень обработки заявок
             self.handle_priority_selection(call, username, self.high_priority, "высокий")
+
+        elif call.data.startswith('claim_'):
+            number = call.data.split('_')[1]
+            self.get_claim_status_without_checking(call.message, username, number)
+
+        elif call.data.startswith('comment_'):
+            number = call.data.split('_')[1]
+            self.add_comment(call, username, number)
 
     def handle_priority_selection(self, call, username, priority_level, priority_name):
         self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
@@ -164,7 +175,7 @@ class TelegramBot:
         msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
         self.bot.register_next_step_handler(msg, self.process_claim_theme)
 
-    def registration(self, username, call):
+    def registration(self, call, username):
         if not self.supabase_client.check_user(username):
             self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
             # функции для регистрации
@@ -248,6 +259,7 @@ class TelegramBot:
             return True
         else:
             return False
+
     def if_help(self, message):
         if message.text.startswith('/help'):
             self.bot.clear_step_handler_by_chat_id(message.chat.id)
@@ -296,12 +308,72 @@ class TelegramBot:
                 self.bot.register_next_step_handler(message, self.process_claim_text, username)
             self.create_keyboard(message.chat.id)
 
+    def get_claim_status(self, call, username):
+        self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
+        self.bot.register_next_step_handler(call.message, self.get_claim_status_with_checking, username)
+
+    def get_claim_status_with_checking(self, message, username):
+        if self.if_start(message) or self.if_help(message):
+            return
+
+        if not message.text.isdigit():
+            self.send_invalid_claim_message(message, username)
+            return
+
+        claim_info = self.jira_client.check_claim_status(message.text, username)
+        if claim_info:
+            markup = types.InlineKeyboardMarkup()
+            comment_button = types.InlineKeyboardButton(text="Оставить комментарий", callback_data=f"comment_{message.text}")
+            markup.add(comment_button)
+
+            self.bot.send_message(message.chat.id, f"Статус заявки: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
+                                f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
+                                f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nПоследний комментарий "
+                                f"оставлен <b>{claim_info['last_comment']['author']}</b> в "
+                                f"<b>{claim_info['last_comment']['created']}</b>:\n\n"
+                                f"{claim_info['last_comment']['text']}", parse_mode='HTML')
+        else:
+            self.send_invalid_claim_message(message, username)
+    def get_claim_status_without_checking(self, message, username, number):
+        claim_info = self.jira_client.check_claim_status(number, username)
+        print(claim_info)
+        if claim_info:
+            markup = types.InlineKeyboardMarkup()
+            comment_button = types.InlineKeyboardButton(text="Оставить комментарий", callback_data=f"comment_{number}")
+            markup.add(comment_button)
+
+            self.bot.send_message(message.chat.id, f"Статус заявки: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
+                                f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
+                                f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nПоследний комментарий "
+                                f"оставлен <b>{claim_info['last_comment']['author']}</b> в "
+                                f"<b>{claim_info['last_comment']['created']}</b>:\n\n"
+                                f"{claim_info['last_comment']['text']}", parse_mode='HTML', reply_markup=markup)
+        else:
+            self.send_invalid_claim_message(message, username)
+
+    def send_invalid_claim_message(self, message, username):
+        self.bot.send_message(message.chat.id, "Номер введён неправильно, повторите:")
+        self.bot.register_next_step_handler(message, self.get_claim_status_with_checking, username)
+
+    def comment_message(self, call, username, number):
+        self.bot.send_message(call.message.chat.id, "Введите комментарий:")
+        self.bot.register_next_step_handler(call.message, self.add_comment, username, number)
+
+    def add_comment(self, call, username, number):
+        response = jira_client.add_comment_to_claim(number, username, call.message.text)
+        print('Ответ при добавлении комментария', response)
+        if response:
+            self.bot.send_message(call.message.chat.id, "Комментарий добавлен")
+        else:
+            self.bot.send_message(call.message.chat.id, "Не удалось добавить комментарий")
+
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
         self.create_keyboard(message.chat.id)
 
     def run(self):
         self.bot.polling() # non_stop=True, timeout=30, long_polling_timeout=30)
+
 
 if __name__ == '__main__':
     supabase_client = SupabaseClient()
