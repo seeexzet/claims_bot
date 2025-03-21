@@ -1,3 +1,4 @@
+import jira
 import telebot
 from telebot import types
 import os
@@ -24,7 +25,7 @@ from jira_client import JiraClient
 # 3 - уведомлять (подписка на обновления) об изменении статус и новых апдейтах в тех заявках, на которые пользователь «подписался»
 
 class TelegramBot:
-    def __init__(self, supabase_client, jira_client):
+    def __init__(self, supabase_client):
         load_dotenv(override=True)
         self.TG_TOKEN = os.getenv("TG_TOKEN")
         self.bot = telebot.TeleBot(self.TG_TOKEN)
@@ -43,10 +44,6 @@ class TelegramBot:
         self.register_handlers()
         self.reg_data = {}
         self.claim_data = {}
-
-        # экземпляр JiraClient
-        self.jira_client = jira_client
-
 
     def register_handlers(self):
         # Обработчики команд
@@ -124,27 +121,33 @@ class TelegramBot:
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали проверить статус заявки")
-                jira_claims_numbers = self.supabase_client.get_claims_numbers(username) # нужно не через Supabase
-                if jira_claims_numbers:
-                    buttons = []
-                    for number in jira_claims_numbers:
-                        button = types.InlineKeyboardButton(f"№{number}",
-                                                            callback_data=f'claim_{number}')
-                        buttons.append(button)
-                    markup = types.InlineKeyboardMarkup(row_width=3)
-                    markup.add(*buttons)
-                    self.bot.send_message(call.message.chat.id,
-                                        "Выберите заявку для проверки её статуса:",
-                                        reply_markup=markup)
+                jira_token = supabase_client.get_token_from_supabase(username)
+                if jira_token:
+                    jira_client = JiraClient(jira_token)
+                    del jira_token
+                    jira_claims_numbers = jira_client.get_claims_numbers() # раньше было через Supabase
+                    if jira_claims_numbers:
+                        buttons = []
+                        for number in jira_claims_numbers:
+                            button = types.InlineKeyboardButton(f"№{number}",
+                                                                callback_data=f'claim_{number}')
+                            buttons.append(button)
+                        markup = types.InlineKeyboardMarkup(row_width=3)
+                        markup.add(*buttons)
+                        self.bot.send_message(call.message.chat.id,
+                                            "Выберите заявку для проверки её статуса:",
+                                            reply_markup=markup)
+                    else:
+                        self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
+                        self.create_keyboard(call.message.chat.id)
                 else:
-                    self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
-                    self.create_keyboard(call.message.chat.id)
+                    self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
             else:
                 self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
 
         elif call.data == 'button4':
             # посмотреть статус конкретной заявки
-            self.get_claim_status(call, username)
+            self.get_claim_input_number(call, username)
 
         elif call.data == 'button5':
             # выбран низкий статус заявки
@@ -160,7 +163,11 @@ class TelegramBot:
 
         elif call.data.startswith('claim_'):
             number = call.data.split('_')[1]
-            self.get_claim_status_without_checking(call.message, username, number)
+            self.get_claim_status(call.message, username, number)
+
+        elif call.data.startswith('comment_'):
+            number = call.data.split('_')[1]
+            self.comment_message(call, username, number)
 
     def handle_priority_selection(self, call, username, priority_level, priority_name):
         self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
@@ -271,7 +278,6 @@ class TelegramBot:
                 # print(self.claim_data)
                 # print(message)
                 # print(username)
-                # Запрос детального описания заявки
                 self.bot.send_message(message.chat.id, "Введите описание заявки:")
                 self.bot.register_next_step_handler(message, self.process_claim_text, username)
             else:
@@ -284,58 +290,109 @@ class TelegramBot:
                 self.claim_data[username]['text'] = message.text
                 claim_data = self.claim_data[username]
                 print('claim_data=', claim_data)
-                # добавление заявки в Jira
-                response_claim_jira = self.jira_client.create_claim(username, claim_data)
-                if response_claim_jira:
-                    jira_claim_number = int(response_claim_jira.key.split('-')[1])
-                    response_claim_supabase = self.supabase_client.create_claim(username, claim_data, jira_claim_number)
-                    if response_claim_supabase:
-                        self.bot.send_message(message.chat.id,
-                            f"<b>Ваша заявка принята</b>. \n\nНомер заявки в Supabase: <b>{response_claim_supabase[0]['id']}</b> \n"
-                            f"Номер заявки в Jira: <b>{response_claim_jira.key.split('-')[1]}</b>, ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
+                #получение токена для Jira из Supabase
+                jira_token = supabase_client.get_token_from_supabase(username)
+                if jira_token:
+                    jira_client = JiraClient(jira_token)
+                    del jira_token
+                    # добавление заявки в Jira
+                    response_claim_jira = jira_client.create_claim(username, claim_data)
+                    jira_client.logout()
+                    if response_claim_jira:
+                        jira_claim_number = int(response_claim_jira.key.split('-')[1])
+                        self.bot.send_message(message.chat.id, f"Номер заявки в Jira: {response_claim_jira.key}, Ссылка: \n{response_claim_jira.permalink()}")
+                        #response_claim_supabase = self.supabase_client.create_claim(username, claim_data, jira_claim_number)
+                        #if response_claim_supabase:
+                        #     self.bot.send_message(message.chat.id,
+                        #         f"<b>Ваша заявка принята</b>. \n\nНомер заявки в Supabase: <b>{response_claim_supabase[0]['id']}</b> \n"
+                        #         f"Номер заявки в Jira: <b>{response_claim_jira.key.split('-')[1]}</b>, ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
+                        # else:
+                        #     self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
+                        #         f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
                     else:
-                        self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
-                            f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
+                        self.bot.send_message(message.chat.id, "Не удалось создать заявку")
                 else:
-                    self.bot.send_message(message.chat.id, "Не удалось создать заявку")
+                    self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
             else:
                 self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
                 self.bot.register_next_step_handler(message, self.process_claim_text, username)
             self.create_keyboard(message.chat.id)
 
-    def get_claim_status(self, call, username):
+    def get_claim_input_number(self, call, username):
         self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
-        self.bot.register_next_step_handler(call.message, self.get_claim_status_with_checking, username)
+        self.bot.register_next_step_handler(call.message, self.get_claim_status, username)
 
-    def get_claim_status_with_checking(self, message, username):
-        if self.if_start(message) or self.if_help(message):
-            return
+    def get_claim_status(self, message, username, number=None):
+        # Если number не передан, то берем его из message.text с проверкой
+        if number is None:
+            if self.if_start(message) or self.if_help(message):
+                return
+            if not message.text.isdigit():
+                self.send_invalid_claim_message(message, username)
+                return
+            number = message.text
 
-        if not message.text.isdigit():
-            self.send_invalid_claim_message(message, username)
-            return
+        # Запрашиваем информацию по заявке
+        jira_token = supabase_client.get_token_from_supabase(username)
+        if jira_token:
+            jira_client = JiraClient(jira_token)
+            print(jira_token, '\n', jira_client)
+            del jira_token
+            claim_info = jira_client.check_claim_status(number, username)
+            print('claim_info=', claim_info)
+            jira_client.logout()
+            if claim_info:
+                markup = types.InlineKeyboardMarkup()
+                comment_button = types.InlineKeyboardButton(
+                    text="Оставить комментарий", callback_data=f"comment_{number}"
+                )
+                markup.add(comment_button)
 
-        claim_info = self.jira_client.check_claim_status(message.text, username)
-        if claim_info:
-            self.bot.send_message(message.chat.id, f"Статус заявки: <b>{claim_info['status']}</b> \n\nТема заявки:\n{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}", parse_mode='HTML')
+                self.bot.send_message(
+                    message.chat.id,
+                    f"Статус заявки №{number}: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
+                    f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
+                    f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nПоследний комментарий "
+                    f"оставлен <b>{claim_info['last_comment']['author']}</b> в "
+                    f"<b>{claim_info['last_comment']['created']}</b>:\n\n"
+                    f"{claim_info['last_comment']['text']}",
+                    parse_mode='HTML',
+                    reply_markup=markup
+                )
+            else:
+                print('355 строка')
+                self.send_invalid_claim_message(message, username)
         else:
-            self.send_invalid_claim_message(message, username)
+            self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
 
     def send_invalid_claim_message(self, message, username):
         self.bot.send_message(message.chat.id, "Номер введён неправильно, повторите:")
-        self.bot.register_next_step_handler(message, self.get_claim_status_with_checking, username)
+        self.bot.register_next_step_handler(message, self.get_claim_status, username)
+
+    def comment_message(self, call, username, number):
+        if self.if_start(call.message) or self.if_help(call.message):
+            return
+        self.bot.send_message(call.message.chat.id, "Введите комментарий:")
+        self.bot.register_next_step_handler(call.message, self.add_comment, username, number)
+
+    def add_comment(self, message, username, number):
+        jira_token = supabase_client.get_token_from_supabase(username)
+        if jira_token:
+            jira_client = JiraClient(jira_token)
+            del jira_token
+            response = jira_client.add_comment_to_claim(number, username, message.text)
+            jira_client.logout()
+            print('Ответ при добавлении комментария', response)
+            if response:
+                self.bot.send_message(message.chat.id, f"Комментарий к заявке <b>{number}</b> добавлен", parse_mode='HTML')
+            else:
+                self.bot.send_message(message.chat.id, "Не удалось добавить комментарий")
+        else:
+            self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
 
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
         self.create_keyboard(message.chat.id)
-
-    def get_claim_status_without_checking(self, message, username, number):
-        claim_info = self.jira_client.check_claim_status(number, username)
-        if claim_info:
-            self.bot.send_message(message.chat.id, f"Статус заявки: <b>{claim_info['status']}</b> \n\nТема заявки:\n{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}", parse_mode='HTML')
-        else:
-            self.send_invalid_claim_message(message, username)
-
 
     def run(self):
         self.bot.polling() # non_stop=True, timeout=30, long_polling_timeout=30)
@@ -343,8 +400,8 @@ class TelegramBot:
 
 if __name__ == '__main__':
     supabase_client = SupabaseClient()
-    jira_client = JiraClient()
-    telegram_bot = TelegramBot(supabase_client, jira_client)
+    # jira_client = JiraClient()
+    telegram_bot = TelegramBot(supabase_client)
     # while True:
     #     try:
     #         telegram_bot.run()

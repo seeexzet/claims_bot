@@ -10,6 +10,8 @@ class SupabaseClient:
         self.anon_key: str = os.environ.get("SUPABASE_KEY")
         self.email = os.environ.get("USER_MAIL")
         self.password = os.environ.get("USER_PASS")
+        self.secret_code_for_token = os.environ.get("SUPABASE_SECRET_CODE_FOR_TOKEN")
+        self.supabase_func_name = os.environ.get("SUPABASE_FUNCTION_NAME")
 
         self.table_username = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
@@ -80,6 +82,27 @@ class SupabaseClient:
                 return None
         return None
 
+    def get_token_from_supabase(self, username: str):
+        if self.check_user(username):
+            # Вызываем функцию get_decrypted_token через rpc
+            try:
+                response = self.client.rpc(self.supabase_func_name, {
+                    "p_name": username,
+                    "p_key": self.secret_code_for_token
+                }).execute()
+
+                if response.data:
+                    token = response.data
+                    return token
+                else:
+                    print("Токен не найден или произошла ошибка:", response.error)
+                    return None
+            except Exception as e:
+                print(f"Не удалось получить токен для пользователя '{username}': {str(e)}")
+                return None
+        else:
+            print(f"Нет пользователя с именем {username}")
+
     def create_claim(self, username: str, claim_data: dict, jira_claim_number: int):
         user_id = self.get_user_id_by_username(username)
         data = {
@@ -117,7 +140,7 @@ if __name__ == "__main__":
     supabase_client = SupabaseClient()
 
     # Получить данные из таблицы до аутентификации
-    response = supabase_client.get_data("sample_table").data
+    response = supabase_client.get_data("users").data
     print("Данные из таблицы (без аутентификации): ", response)
 
     # Выполнить аутентификацию пользователя
