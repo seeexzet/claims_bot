@@ -54,9 +54,9 @@ class JiraClient():
                     last_comment_author = comments[-1].author.displayName
                     last_comment_created = comments[-1].created
                 else:
-                    last_comment = 'Тестовое данное для проверки' #None
-                    last_comment_author = 'Тестовое данное для проверки' #None
-                    last_comment_created = issue.fields.updated #None ЗДЕСЬ ТЕСТОВОЕ ДАННОЕ ДЛЯ ПРОВЕРКИ
+                    last_comment = None
+                    last_comment_author = None
+                    last_comment_created = None
 
                 return {
                     'status': issue.fields.status.name,
