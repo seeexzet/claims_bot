@@ -119,7 +119,6 @@ class TelegramBot:
 
         elif call.data == 'button3':
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
-            print('username=', username, 'type=', type(username))
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали посмотреть все открытые заявки")
                 jira_token = supabase_client.get_token_from_supabase(username)
@@ -290,7 +289,7 @@ class TelegramBot:
             if len(message.text) > 1:
                 self.claim_data[username]['text'] = message.text
                 claim_data = self.claim_data[username]
-                print('claim_data=', claim_data)
+                # print('claim_data=', claim_data)
                 #получение токена для Jira из Supabase
                 jira_token = supabase_client.get_token_from_supabase(username)
                 if jira_token:
@@ -339,7 +338,7 @@ class TelegramBot:
             jira_client = JiraClient(jira_token)
             del jira_token
             claim_info = jira_client.check_claim_status(number, username)
-            print('claim_info==', claim_info)
+            # print('claim_info==', claim_info)
             jira_client.logout()
             if claim_info:
                 markup = types.InlineKeyboardMarkup()

@@ -84,7 +84,6 @@ class SupabaseClient:
 
     def get_token_from_supabase(self, username: int):
         if self.check_user(username):
-            print('check user=', username, ' type=', type(username))
             # Вызываем функцию get_decrypted_token через rpc
             try:
                 response = self.client.rpc(self.supabase_func_name, {
