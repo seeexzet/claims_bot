@@ -171,6 +171,7 @@ class TelegramBot:
 
     def handle_priority_selection(self, call, username, priority_level, priority_name):
         self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
+        print('priority_level=', priority_level)
         self.claim_data[username] = {'priority': priority_level}
         self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                            reply_markup=None)

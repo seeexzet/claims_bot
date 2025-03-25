@@ -21,7 +21,7 @@ class JiraClient():
 
         jira_options = {'server': self.domain}
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
-        self.jira = JIRA(options=jira_options, basic_auth=(self.email, token))
+        self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
         token = None
 
     def create_claim(self, username, claim_data): # status):
@@ -44,9 +44,7 @@ class JiraClient():
     def check_claim_status(self, claim_number, username):
         try:
             issue = self.jira.issue(self.project_key+'-'+str(claim_number))
-            print('issue=', issue.fields)
-            #value_author = getattr(issue.fields, self.author_field, 'Поле не найдено')
-            if issue.fields.reporter.accountId == self.jira.myself().get("accountId"):
+            if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:     #self.jira.myself().get("accountId"):
                 comments = issue.fields.comment.comments
                 print('comments=', comments)
                 if comments:
@@ -78,7 +76,7 @@ class JiraClient():
     def add_comment_to_claim(self, claim_number, username, comment_text):
         try:
             issue = self.jira.issue(self.project_key + '-' + str(claim_number))
-            if issue.fields.reporter.accountId == self.jira.myself().get("accountId"):
+            if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:
                 return self.jira.add_comment(self.project_key+'-'+str(claim_number), comment_text)
             else:
                 return None
