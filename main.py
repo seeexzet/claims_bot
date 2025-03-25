@@ -97,7 +97,7 @@ class TelegramBot:
 
     def handle_query(self, call):
         user = call.from_user
-        username = user.username
+        username = user.id
         if not username:
             self.bot.send_message(call.message.chat.id, "Установите имя пользователя в настройках Telegram")
             return
@@ -119,6 +119,7 @@ class TelegramBot:
 
         elif call.data == 'button3':
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
+            print('username=', username, 'type=', type(username))
             if self.supabase_client.check_user(username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали посмотреть все открытые заявки")
                 jira_token = supabase_client.get_token_from_supabase(username)
@@ -188,7 +189,7 @@ class TelegramBot:
 
     def process_registration_name(self, message):
         if not self.if_start(message) and not self.if_help(message):
-            username = message.from_user.username
+            username = message.from_user.id
             self.reg_data[username] = {}
             if len(message.text.split(' ')) == 3:
                 self.reg_data[username]['fio'] = message.text
@@ -272,14 +273,14 @@ class TelegramBot:
 
     def process_claim_theme(self, message):
         if not self.if_start(message) and not self.if_help(message):
-            username = message.from_user.username
+            username = message.from_user.id
             if len(message.text) > 0:
                 self.claim_data[username]['theme'] = message.text
                 # print(self.claim_data)
                 # print(message)
                 # print(username)
                 self.bot.send_message(message.chat.id, "Введите описание заявки:")
-                self.bot.register_next_step_handler(message, self.process_claim_text, username)
+                self.bot.register_next_step_handler(message, self.process_claim_text, username) #  ЗДЕСЬ НАДО ПЕРЕХОД НА ОСТАВЛЕНИЕ ПРИЛОЖЕНИЯ
             else:
                 self.bot.send_message(message.chat.id, "Тема введена неправильно, введите заново:")
                 self.bot.register_next_step_handler(message, self.process_claim_theme, username)
@@ -312,7 +313,7 @@ class TelegramBot:
                     else:
                         self.bot.send_message(message.chat.id, "Не удалось создать заявку")
                 else:
-                    self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
+                    self.bot.send_message(message.chat.id, f"Пользователь {username} не зарегистрирован в Supabase")
             else:
                 self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
                 self.bot.register_next_step_handler(message, self.process_claim_text, username)

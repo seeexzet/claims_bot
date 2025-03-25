@@ -43,7 +43,7 @@ class SupabaseClient:
         response = self.client.table(self.table_username).select("*").execute()
         return response
 
-    def check_user(self, username: str) -> bool:
+    def check_user(self, username: int) -> bool:
         try:
             response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
             data = response.data
@@ -70,7 +70,7 @@ class SupabaseClient:
         else:
             return None
 
-    def get_user_id_by_username(self, username: str):
+    def get_user_id_by_username(self, username: int):
         if self.check_user(username):
             try:
                 response = self.client.table(self.table_username).select("id").eq(self.field_username, username).execute()
@@ -82,8 +82,9 @@ class SupabaseClient:
                 return None
         return None
 
-    def get_token_from_supabase(self, username: str):
+    def get_token_from_supabase(self, username: int):
         if self.check_user(username):
+            print('check user=', username, ' type=', type(username))
             # Вызываем функцию get_decrypted_token через rpc
             try:
                 response = self.client.rpc(self.supabase_func_name, {
@@ -98,7 +99,7 @@ class SupabaseClient:
                     print("Токен не найден или произошла ошибка:", response.error)
                     return None
             except Exception as e:
-                print(f"Не удалось получить токен для пользователя '{username}': {str(e)}")
+                print(f"Не удалось получить токен для пользователя {username}: {str(e)}")
                 return None
         else:
             print(f"Нет пользователя с именем {username}")
