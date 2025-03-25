@@ -36,6 +36,9 @@ class TelegramBot:
         self.todo_status = os.environ.get("GIRA_TODO_STATUS")
         self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
         self.done_status = os.environ.get("GIRA_TODO_DONE")
+        self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
+        self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
+        self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
 
         # экземпляр SupabaseClient
         self.supabase_client = supabase_client
@@ -94,6 +97,16 @@ class TelegramBot:
         markup.add(button6)
         markup.add(button7)
         self.bot.send_message(chat_id, "Выберите приоритет заявки:", reply_markup=markup)
+
+    def type_keyboard(self, chat_id):
+        markup = types.InlineKeyboardMarkup()
+        button8 = types.InlineKeyboardButton(self.typetask_field_1, callback_data='button8')
+        button9 = types.InlineKeyboardButton(self.typetask_field_2, callback_data='button9')
+        button10 = types.InlineKeyboardButton(self.typetask_field_3, callback_data='button10')
+        markup.add(button8)
+        markup.add(button9)
+        markup.add(button10)
+        self.bot.send_message(chat_id, "Выберите тип заявки:", reply_markup=markup)
 
     def handle_query(self, call):
         user = call.from_user
@@ -160,6 +173,15 @@ class TelegramBot:
         elif call.data == 'button7':
             # выбран высокий уровень обработки заявок
             self.handle_priority_selection(call, username, self.high_priority, "высокий")
+
+        elif call.data == 'button8':
+            self.handle_priority_selection(call, username, self.process_claim_type, self.typetask_field_1)
+
+        elif call.data == 'button9':
+            self.handle_priority_selection(call, username, self.process_claim_type, self.typetask_field_2)
+
+        elif call.data == 'button10':
+            self.handle_priority_selection(call, username, self.process_claim_type, self.typetask_field_3)
 
         elif call.data.startswith('claim_'):
             number = call.data.split('_')[1]
@@ -279,11 +301,25 @@ class TelegramBot:
                 # print(self.claim_data)
                 # print(message)
                 # print(username)
-                self.bot.send_message(message.chat.id, "Введите описание заявки:")
-                self.bot.register_next_step_handler(message, self.process_claim_text, username) #  ЗДЕСЬ НАДО ПЕРЕХОД НА ОСТАВЛЕНИЕ ПРИЛОЖЕНИЯ
+                self.bot.send_message(message.chat.id, "Выберите тип заявки:")
+                self.bot.register_next_step_handler(message, self.process_claim_type, username)
             else:
                 self.bot.send_message(message.chat.id, "Тема введена неправильно, введите заново:")
                 self.bot.register_next_step_handler(message, self.process_claim_theme, username)
+
+    def process_claim_type(self, message, username):
+        if not self.if_start(message) and not self.if_help(message):
+            username = message.from_user.id
+            if len(message.text) > 0:
+                self.claim_data[username]['type'] = message.text
+                # print(self.claim_data)
+                # print(message)
+                # print(username)
+                self.bot.send_message(message.chat.id, "Введите описание заявки:")
+                self.bot.register_next_step_handler(message, self.process_claim_text, username) #  ЗДЕСЬ НАДО ПЕРЕХОД НА ОСТАВЛЕНИЕ ПРИЛОЖЕНИЯ
+            else:
+                self.bot.send_message(message.chat.id, "Тип введен неправильно, введите заново:")
+                self.bot.register_next_step_handler(message, self.process_claim_type, username)
 
     def process_claim_text(self, message, username):
         if not self.if_start(message) and not self.if_help(message):
@@ -310,6 +346,7 @@ class TelegramBot:
                         # else:
                         #     self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
                         #         f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
+                        del self.claim_data
                     else:
                         self.bot.send_message(message.chat.id, "Не удалось создать заявку")
                 else:

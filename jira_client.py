@@ -17,21 +17,19 @@ class JiraClient():
         # self.token = os.environ.get("GIRA_TOKEN")
         self.project_key = os.environ.get("GIRA_PROJECT_KEY")
         self.author_field = os.environ.get("GIRA_AUTHOR_FIELD")
-        self.typetask_field = os.environ.get("GIRA_TYPETASK_FIELD")
-
         jira_options = {'server': self.domain}
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
         self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
         token = None
 
-    def create_claim(self, username, claim_data): # status):
+    def create_claim(self, username, claim_data,): # status):
         data = {
             'project': self.project_key,
             'summary': claim_data['theme'],
             'description': claim_data['text'],
             #self.author_field: username,
             'priority': {"name": claim_data['priority']},
-            'issuetype': {'name': self.typetask_field}  # можно указать тип задачи: Bug, Task, Story и т.д.
+            'issuetype': {'name': claim_data['type']}  # можно указать тип задачи
         }
         try:
             new_issue = self.jira.create_issue(data)
