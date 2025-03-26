@@ -22,7 +22,7 @@ class JiraClient():
         self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
         token = None
 
-    def create_claim(self, username, claim_data,): # status):
+    def create_claim(self, username, claim_data): # status):
         data = {
             'project': self.project_key,
             'summary': claim_data['theme'],
@@ -37,6 +37,15 @@ class JiraClient():
             return new_issue
         except Exception as e:
             print(f"Error creating claim for user '{username}': {str(e)}")
+            return None
+
+    def add_attachment_to_claim(self, claim_number: int, downloaded_file, filename):
+        try:
+            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
+            response = self.jira.add_attachment(issue=issue, attachment=downloaded_file, filename=filename)
+            return response
+        except Exception as e:
+            print(f"Ошибка при загрузке файла в Jira: {e}")
             return None
 
     def check_claim_status(self, claim_number, username):
