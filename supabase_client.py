@@ -63,7 +63,6 @@ class SupabaseClient:
                 # self.field_email: registration_data['email'],
                 # self.field_phone: registration_data['phone']
             }
-            print(data)
             try:
                 # response = self.client.table(self.table_username).insert(data).execute()
                 response = self.client.rpc(self.supabase_func_of_insert, {
@@ -93,7 +92,6 @@ class SupabaseClient:
 
     def get_token_from_supabase(self, username: int):
         if self.check_user(username):
-            # Вызываем функцию get_decrypted_token через rpc
             try:
                 response = self.client.rpc(self.supabase_func_of_read, {
                     "p_name": username,
@@ -129,7 +127,7 @@ class SupabaseClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def get_claims_numbers_and_themes(self, username: str):
+    def get_claims_numbers_and_themes(self, username: int):
         if self.check_user(username):
             user_id = self.get_user_id_by_username(username) # находим user_id
             try:
@@ -143,6 +141,25 @@ class SupabaseClient:
                 return False
         return False
 
+    def delete_user(self, username: int):
+        try:
+            response = self.client.table("users") \
+                .delete(returning="representation") \
+                .eq("user_tg", username) \
+                .execute()
+            return response.data
+        except Exception as e:
+            print(f"Ошибка удаления пользователя {username}: {e}")
+            return None
+
+    def logout(self):
+        try:
+            response = self.client.auth.sign_out()
+            self.user = None
+            return response
+        except Exception as e:
+            print(f"Ошибка при выходе: {e}")
+            return None
 
 
 if __name__ == "__main__":

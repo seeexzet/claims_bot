@@ -26,7 +26,7 @@ from jira_client import JiraClient
 # 3 - уведомлять (подписка на обновления) об изменении статус и новых апдейтах в тех заявках, на которые пользователь «подписался»
 
 class TelegramBot:
-    def __init__(self, supabase_client):
+    def __init__(self):
         load_dotenv(override=True)
         self.TG_TOKEN = os.getenv("TG_TOKEN")
         self.bot = telebot.TeleBot(self.TG_TOKEN)
@@ -43,9 +43,6 @@ class TelegramBot:
 
         self.gira_project_key = os.environ.get("GIRA_PROJECT_KEY")
 
-        # экземпляр SupabaseClient
-        self.supabase_client = supabase_client
-        self.supabase_client.sign_in()
         self.register_handlers()
         self.reg_data = {}
         self.attachment = None
@@ -63,12 +60,13 @@ class TelegramBot:
         # Удаляем все зарегистрированные обработчики, чтобы прервать текущую регистрацию или другой процесс.
         self.bot.clear_step_handler_by_chat_id(message.chat.id)
         if not message.chat.username:
-            self.bot.send_message(message.chat.id, f"Привет!")
+            pass
         elif message.chat.first_name:
             self.bot.send_message(message.chat.id, f"Привет, {message.chat.first_name}!")
         else:
             self.bot.send_message(message.chat.id, f"Привет, {message.chat.username}!")
-        self.create_keyboard(message.chat.id)
+        self.username = message.from_user.id
+        self.create_keyboard(message.chat.id, self.username)
 
     def send_help(self, message):
         self.bot.send_message(message.chat.id,
@@ -79,13 +77,21 @@ class TelegramBot:
                               # "/check - Проверить статус заявки\n"
                               "/help - Получить помощь")
 
-    def create_keyboard(self, chat_id):
+    def create_keyboard(self, chat_id, user_id):
         markup = types.InlineKeyboardMarkup()
-        button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
+        # подключение к Supabase
+        supabase_client = self.initialize_supabase_client()
+        if self.supabase_client.check_user(user_id):
+            button0 = types.InlineKeyboardButton('Сбросить регистрацию', callback_data='button0')
+            markup.add(button0)
+        else:
+            button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
+            markup.add(button1)
+        supabase_client.logout()
+        self.supabase_client = None
         button2 = types.InlineKeyboardButton('Оставить заявку', callback_data='button2')
         button3 = types.InlineKeyboardButton('Все открытые заявки', callback_data='button3')
         button4 = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button4')
-        markup.add(button1)
         markup.add(button2)
         markup.add(button3)
         markup.add(button4)
@@ -121,7 +127,10 @@ class TelegramBot:
     def handle_query(self, call):
         user = call.from_user
         self.username = user.id
-        print("type(self.username)=",type(self.username))
+
+        if call.data == 'button0':
+            self.bot.answer_callback_query(call.id, "Вы нажали Сбросить регистрацию")
+            self.reset_keyboard(call.message.chat.id)
 
         if call.data == 'button1':
             self.bot.answer_callback_query(call.id, "Вы нажали Регистрация пользователя")
@@ -130,17 +139,22 @@ class TelegramBot:
         elif call.data == 'button2':
             self.bot.answer_callback_query(call.id, "Вы нажали Оставить заявку")
             self.claim_data = {}
-            if self.supabase_client.check_user(self.username):
+            supabase_client = self.initialize_supabase_client()
+            if supabase_client.check_user(self.username):
                 self.bot.send_message(call.message.chat.id,
                                       "Вы выбрали оставить заявку. Выберите приоритет заявки:")
                 self.priority_keyboard(call.message.chat.id)
                 # self.bot.register_next_step_handler(call.message, self.process_claim_priority)
             else:
                 self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
+            supabase_client.logout()
+            self.supabase_client = None
+
 
         elif call.data == 'button3':
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
-            if self.supabase_client.check_user(self.username):
+            supabase_client = self.initialize_supabase_client()
+            if supabase_client.check_user(self.username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали посмотреть все открытые заявки")
                 jira_token = supabase_client.get_token_from_supabase(self.username)
                 if jira_token:
@@ -160,11 +174,14 @@ class TelegramBot:
                                             reply_markup=markup)
                     else:
                         self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
-                        self.create_keyboard(call.message.chat.id)
+                        self.create_keyboard(call.message.chat.id, self.username)
                 else:
                     self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
             else:
                 self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
+            supabase_client.logout()
+            self.supabase_client = None
+
 
         elif call.data == 'button4':
             # посмотреть статус конкретной заявки
@@ -208,13 +225,45 @@ class TelegramBot:
         elif call.data.startswith("upload_no"):
             self.upload_claim(call.message)
 
+        elif call.data.startswith("reset_yes"):
+            self.bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+            self.reset_registration(call.message)
+
+        elif call.data.startswith("reset_no"):
+            self.bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+            self.create_keyboard(call.message.chat.id, self.username)
+
+    def reset_keyboard(self, chat_id):
+        markup = types.InlineKeyboardMarkup()
+        btn_yes = types.InlineKeyboardButton(text="Да", callback_data=f"reset_yes")
+        btn_no = types.InlineKeyboardButton(text="Нет", callback_data=f"reset_no")
+        markup.add(btn_yes, btn_no)
+        self.bot.send_message(chat_id, "Вы уверены, что хотите сбросить регистрацию?", reply_markup=markup)
+
+    def reset_registration(self, message):
+        if not self.if_start(message) and not self.if_help(message):
+            supabase_client = self.initialize_supabase_client()
+            if supabase_client.check_user(self.username):
+                response = supabase_client.delete_user(self.username)
+                supabase_client.logout()
+                self.supabase_client = None
+                if response:
+                    self.bot.send_message(message.chat.id, f"Пользователь был успешно удалён, пройдите регистрацию заново для дальнейшей работы")
+                    self.create_keyboard(message.chat.id, self.username)
+                else:
+                    self.bot.send_message(message.chat.id, f"Не удалось удалить пользователя")
+            else:
+                self.bot.send_message(message.chat.id, f"Пользователь не зарегистрирован")
+                self.create_keyboard(message.chat.id, self.username)
+
+
     def handle_priority_selection(self, call, priority_level, priority_name):
-        self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
-        print('priority_level=', priority_level)
-        self.claim_data = {'priority': priority_level}
-        self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                           reply_markup=None)
-        self.type_keyboard(call.message.chat.id)
+            self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
+            print('priority_level=', priority_level)
+            self.claim_data = {'priority': priority_level}
+            self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                               reply_markup=None)
+            self.type_keyboard(call.message.chat.id)
 
     def process_claim_type(self, call, type: str):
         self.claim_data['type'] = type
@@ -264,7 +313,8 @@ class TelegramBot:
             self.attachenent_keyboard(message.chat.id)
 
     def registration(self, call):
-        if not self.supabase_client.check_user(self.username):
+        supabase_client = self.initialize_supabase_client()
+        if not supabase_client.check_user(self.username):
             self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
             # функции для регистрации
             self.bot.send_message(
@@ -280,22 +330,26 @@ class TelegramBot:
             self.bot.register_next_step_handler(call.message, self.process_registration_token)
         else:
             self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
+        supabase_client.logout()
+        self.supabase_client = None
 
     def process_registration_token(self, message):
+        supabase_client = self.initialize_supabase_client()
         if not self.if_start(message) and not self.if_help(message):
-            if len(message.text) > 1:
-                print(type(self.username))
-                response = self.supabase_client.add_user(self.username, message.text)
+            if len(message.text) > 16:
+                response = supabase_client.add_user(self.username, "".join(message.text.split()))
                 if response:
                     self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
                 else:
                     self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
                 # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
-                self.create_keyboard(message.chat.id)
+                self.create_keyboard(message.chat.id, self.username)
                 del message.text
         else:
             self.bot.send_message(message.chat.id, "Токен введён неверно. Повторите ввод")
             self.bot.register_next_step_handler(message, self.process_registration_token)
+        supabase_client.logout()
+        self.supabase_client = None
 
     # def process_registration_name(self, message):
     #     if not self.if_start(message) and not self.if_help(message):
@@ -341,7 +395,7 @@ class TelegramBot:
     #             else:
     #                 self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
     #             # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
-    #             self.create_keyboard(message.chat.id)
+    #             self.create_keyboard(message.chat.id, self.username)
     #             del self.reg_data[username]
     #         else:
     #             self.bot.send_message(message.chat.id, "Телефон введён с ошибкой, введите ещё раз:")
@@ -383,11 +437,14 @@ class TelegramBot:
             else:
                 self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
                 self.bot.register_next_step_handler(message, self.process_claim_text)
-                self.create_keyboard(message.chat.id)
+                self.create_keyboard(message.chat.id, self.username)
 
     def upload_claim(self, message):
         #получение токена для Jira из Supabase
+        supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
+        supabase_client.logout()
+        self.supabase_client = None
         if jira_token:
             jira_client = JiraClient(jira_token)
             del jira_token
@@ -443,6 +500,7 @@ class TelegramBot:
                 return
 
         # Запрашиваем информацию по заявке
+        supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
         if jira_token:
             jira_client = JiraClient(jira_token)
@@ -468,7 +526,7 @@ class TelegramBot:
                         parse_mode='HTML',
                         reply_markup=markup
                     )
-                    self.create_keyboard(message.chat.id)
+                    self.create_keyboard(message.chat.id, self.username)
                 else:
                     self.bot.send_message(
                         message.chat.id,
@@ -478,12 +536,14 @@ class TelegramBot:
                         parse_mode='HTML',
                         reply_markup=markup
                     )
-                    self.create_keyboard(message.chat.id)
+                    self.create_keyboard(message.chat.id, self.username)
             else:
                 self.send_invalid_claim_message(message)
         else:
             self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
-            self.create_keyboard(message.chat.id)
+            self.create_keyboard(message.chat.id, self.username)
+        supabase_client.logout()
+        self.supabase_client = None
 
     def send_invalid_claim_message(self, message):
         self.bot.send_message(message.chat.id, "Номер введён неправильно, повторите:")
@@ -496,7 +556,10 @@ class TelegramBot:
         self.bot.register_next_step_handler(call.message, self.add_comment, number)
 
     def add_comment(self, message, number):
+        supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
+        supabase_client.logout()
+        self.supabase_client = None
         if jira_token:
             jira_client = JiraClient(jira_token)
             del jira_token
@@ -506,13 +569,18 @@ class TelegramBot:
             if response:
                 # del response
                 self.bot.send_message(message.chat.id, f"Комментарий к заявке <b>{number}</b> добавлен", parse_mode='HTML')
-                self.create_keyboard(message.chat.id)
+                self.create_keyboard(message.chat.id, self.username)
             else:
                 self.bot.send_message(message.chat.id, "Не удалось добавить комментарий")
-                self.create_keyboard(message.chat.id)
+                self.create_keyboard(message.chat.id, self.username)
         else:
             self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
-            self.create_keyboard(message.chat.id)
+            self.create_keyboard(message.chat.id, self.username)
+
+    def initialize_supabase_client(self):
+        self.supabase_client = SupabaseClient()
+        self.supabase_client.sign_in()
+        return self.supabase_client
 
     def if_start(self, message):
         if message.text.startswith('/start'):
@@ -539,9 +607,8 @@ class TelegramBot:
 
 
 if __name__ == '__main__':
-    supabase_client = SupabaseClient()
     # jira_client = JiraClient()
-    telegram_bot = TelegramBot(supabase_client)
+    telegram_bot = TelegramBot()
     # while True:
     #     try:
     #         telegram_bot.run()

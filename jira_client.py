@@ -53,7 +53,6 @@ class JiraClient():
             issue = self.jira.issue(claim_number)
             if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:     #self.jira.myself().get("accountId"):
                 comments = issue.fields.comment.comments
-                print('comments=', comments)
                 if comments:
                     last_comment = comments[-1].body
                     last_comment_author = comments[-1].author.displayName
