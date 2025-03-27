@@ -29,7 +29,7 @@ class JiraClient():
             'description': claim_data['text'],
             #self.author_field: username,
             'priority': {"name": claim_data['priority']},
-            'issuetype': {'name': claim_data['type']}  # можно указать тип задачи
+            'issuetype': {'name': claim_data['type']}
         }
         try:
             new_issue = self.jira.create_issue(data)

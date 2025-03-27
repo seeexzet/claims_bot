@@ -11,7 +11,8 @@ class SupabaseClient:
         self.email = os.environ.get("USER_MAIL")
         self.password = os.environ.get("USER_PASS")
         self.secret_code_for_token = os.environ.get("SUPABASE_SECRET_CODE_FOR_TOKEN")
-        self.supabase_func_name = os.environ.get("SUPABASE_FUNCTION_NAME")
+        self.supabase_func_of_read = os.environ.get("SUPABASE_FUNCTION_OF_READ")
+        self.supabase_func_of_insert = os.environ.get("SUPABASE_FUNCTION_OF_INSERT")
 
         self.table_username = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
@@ -19,6 +20,7 @@ class SupabaseClient:
         self.field_company = os.environ.get("FIELD_COMPANY")
         self.field_email = os.environ.get("FIELD_EMAIL")
         self.field_phone = os.environ.get("FIELD_PHONE")
+        self.field_token = os.environ.get("FIELD_TOKEN")
 
         self.table_claims = os.environ.get("TABLE_CLAIM")
         self.field_claims_user_id = os.environ.get("FIELD_CLAIMS_USER_ID")
@@ -51,18 +53,25 @@ class SupabaseClient:
         except Exception as e:
             return False
 
-    def add_user(self, username: str, registration_data: dict):
+    def add_user(self, username: int, token: str): # registration_data: dict):
         if not self.check_user(username):
             data = {
                 self.field_username: username,
-                self.field_fio: registration_data['fio'],
-                self.field_company: registration_data['company'],
-                self.field_email: registration_data['email'],
-                self.field_phone: registration_data['phone']
+                self.field_token: token
+                # self.field_fio: registration_data['fio'],
+                # self.field_company: registration_data['company'],
+                # self.field_email: registration_data['email'],
+                # self.field_phone: registration_data['phone']
             }
             print(data)
             try:
-                response = self.client.table(self.table_username).insert(data).execute()
+                # response = self.client.table(self.table_username).insert(data).execute()
+                response = self.client.rpc(self.supabase_func_of_insert, {
+                    "user_tg": int(username),
+                    "token": token,
+                    "enc_key": self.secret_code_for_token
+                }).execute()
+                del token
                 return response.data # Ответ от Supabase.
             except Exception as e:
                 print(f"Error adding user '{username}': {str(e)}")
@@ -86,7 +95,7 @@ class SupabaseClient:
         if self.check_user(username):
             # Вызываем функцию get_decrypted_token через rpc
             try:
-                response = self.client.rpc(self.supabase_func_name, {
+                response = self.client.rpc(self.supabase_func_of_read, {
                     "p_name": username,
                     "p_key": self.secret_code_for_token
                 }).execute()

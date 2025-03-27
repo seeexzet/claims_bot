@@ -45,10 +45,10 @@ class TelegramBot:
 
         # экземпляр SupabaseClient
         self.supabase_client = supabase_client
-        # self.supabase_client = SupabaseClient()
         self.supabase_client.sign_in()
         self.register_handlers()
         self.reg_data = {}
+        self.attachment = None
 
     def register_handlers(self):
         # Обработчики команд
@@ -63,9 +63,8 @@ class TelegramBot:
         # Удаляем все зарегистрированные обработчики, чтобы прервать текущую регистрацию или другой процесс.
         self.bot.clear_step_handler_by_chat_id(message.chat.id)
         if not message.chat.username:
-            self.bot.send_message(message.chat.id, "Перед работой с ботом установите имя аккаунта в настройках Telegram")
-            return
-        if message.chat.first_name:
+            self.bot.send_message(message.chat.id, f"Привет!")
+        elif message.chat.first_name:
             self.bot.send_message(message.chat.id, f"Привет, {message.chat.first_name}!")
         else:
             self.bot.send_message(message.chat.id, f"Привет, {message.chat.username}!")
@@ -82,11 +81,11 @@ class TelegramBot:
 
     def create_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        # button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
+        button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
         button2 = types.InlineKeyboardButton('Оставить заявку', callback_data='button2')
         button3 = types.InlineKeyboardButton('Все открытые заявки', callback_data='button3')
         button4 = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button4')
-        # markup.add(button1)
+        markup.add(button1)
         markup.add(button2)
         markup.add(button3)
         markup.add(button4)
@@ -122,6 +121,7 @@ class TelegramBot:
     def handle_query(self, call):
         user = call.from_user
         self.username = user.id
+        print("type(self.username)=",type(self.username))
 
         if call.data == 'button1':
             self.bot.answer_callback_query(call.id, "Вы нажали Регистрация пользователя")
@@ -136,7 +136,7 @@ class TelegramBot:
                 self.priority_keyboard(call.message.chat.id)
                 # self.bot.register_next_step_handler(call.message, self.process_claim_priority)
             else:
-                self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
+                self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
 
         elif call.data == 'button3':
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
@@ -162,9 +162,9 @@ class TelegramBot:
                         self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
                         self.create_keyboard(call.message.chat.id)
                 else:
-                    self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
+                    self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
             else:
-                self.bot.send_message(call.message.chat.id, "Сначала нужно зарегистрироваться")
+                self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
 
         elif call.data == 'button4':
             # посмотреть статус конкретной заявки
@@ -263,15 +263,40 @@ class TelegramBot:
             self.bot.send_message(message.chat.id, "Фотография не найдена.")
             self.attachenent_keyboard(message.chat.id)
 
-    # def registration(self, call):
-    #     if not self.supabase_client.check_user():
-    #         self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
-    #         # функции для регистрации
-    #         self.bot.send_message(call.message.chat.id, "Введите ваши фамилию, имя, отчество:")
-    #         self.bot.register_next_step_handler(call.message, self.process_registration_name)
-    #     else:
-    #         self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
-    #
+    def registration(self, call):
+        if not self.supabase_client.check_user(self.username):
+            self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
+            # функции для регистрации
+            self.bot.send_message(
+                call.message.chat.id,
+                (
+                    "Нужно завести токен. \n"
+                    "1. Пройдите по ссылке: https://support24.team/secure/ViewProfile.jspa\n"
+                    "Нажмите справа вверху Create token (Создать токен)\n"
+                    "2. Введите название токена в поле Token name и нажмите внизу Create (Создать)\n"
+                    "3. Скопируйте в открывшейся странице Token (длинную последовательность символов) и вставьте сюда"
+                )
+            )
+            self.bot.register_next_step_handler(call.message, self.process_registration_token)
+        else:
+            self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
+
+    def process_registration_token(self, message):
+        if not self.if_start(message) and not self.if_help(message):
+            if len(message.text) > 1:
+                print(type(self.username))
+                response = self.supabase_client.add_user(self.username, message.text)
+                if response:
+                    self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
+                else:
+                    self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
+                # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
+                self.create_keyboard(message.chat.id)
+                del message.text
+        else:
+            self.bot.send_message(message.chat.id, "Токен введён неверно. Повторите ввод")
+            self.bot.register_next_step_handler(message, self.process_registration_token)
+
     # def process_registration_name(self, message):
     #     if not self.if_start(message) and not self.if_help(message):
     #         self.reg_data[username] = {}
@@ -353,7 +378,6 @@ class TelegramBot:
         if not self.if_start(message) and not self.if_help(message):
             if len(message.text) > 1:
                 self.claim_data['text'] = message.text
-                print('self.claim_data[text] = ', self.claim_data['text'])
                 claim_data = self.claim_data
                 self.attachenent_keyboard(message.chat.id)
             else:
@@ -403,7 +427,7 @@ class TelegramBot:
         self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
         self.bot.register_next_step_handler(call.message, self.get_claim_status)
 
-    def get_claim_status(self, message, number=None): 
+    def get_claim_status(self, message, number=None):
         # Если number не передан, то берем его из message.text с проверкой
         if number is None:
             if self.if_start(message) or self.if_help(message):
