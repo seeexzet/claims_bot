@@ -120,7 +120,7 @@ class SupabaseClient:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
-    def get_claims_numbers(self, username: str):
+    def get_claims_numbers_and_themes(self, username: str):
         if self.check_user(username):
             user_id = self.get_user_id_by_username(username) # находим user_id
             try:

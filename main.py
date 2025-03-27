@@ -41,6 +41,8 @@ class TelegramBot:
         self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
         self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
 
+        self.gira_project_key = os.environ.get("GIRA_PROJECT_KEY")
+
         # экземпляр SupabaseClient
         self.supabase_client = supabase_client
         # self.supabase_client = SupabaseClient()
@@ -140,18 +142,18 @@ class TelegramBot:
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             if self.supabase_client.check_user(self.username):
                 self.bot.send_message(call.message.chat.id, "Вы выбрали посмотреть все открытые заявки")
-                jira_token = supabase_client.get_token_from_supabase()
+                jira_token = supabase_client.get_token_from_supabase(self.username)
                 if jira_token:
                     jira_client = JiraClient(jira_token)
                     del jira_token
-                    jira_claims_numbers = jira_client.get_claims_numbers() # раньше было через Supabase
-                    if jira_claims_numbers:
+                    jira_claims_numbers_and_themes = jira_client.get_claims_numbers_and_themes() # раньше было через Supabase
+                    if jira_claims_numbers_and_themes:
                         buttons = []
-                        for number in jira_claims_numbers:
-                            button = types.InlineKeyboardButton(f"№{number}",
-                                                                callback_data=f'claim_{number}')
+                        for claim in jira_claims_numbers_and_themes:
+                            button = types.InlineKeyboardButton(f"{claim['number']} — {claim['theme']}",
+                                                                callback_data=f"claim_{claim['number']}")
                             buttons.append(button)
-                        markup = types.InlineKeyboardMarkup(row_width=4)
+                        markup = types.InlineKeyboardMarkup(row_width=1)
                         markup.add(*buttons)
                         self.bot.send_message(call.message.chat.id,
                                             "Выберите заявку для проверки её статуса:",
@@ -368,7 +370,7 @@ class TelegramBot:
             # добавление заявки в Jira
             response_claim_jira = jira_client.create_claim(self.username, self.claim_data)
             if response_claim_jira:
-                jira_claim_number = int(response_claim_jira.key.split('-')[1])
+                jira_claim_number = response_claim_jira.key # int(response_claim_jira.key.split('-')[1])
                 # self.bot.send_message(message.chat.id, f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
                 #response_claim_supabase = self.supabase_client.create_claim(self.username, claim_data, jira_claim_number)
                 #if response_claim_supabase:
@@ -401,15 +403,20 @@ class TelegramBot:
         self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
         self.bot.register_next_step_handler(call.message, self.get_claim_status)
 
-    def get_claim_status(self, message, number=None):
+    def get_claim_status(self, message, number=None): 
         # Если number не передан, то берем его из message.text с проверкой
         if number is None:
             if self.if_start(message) or self.if_help(message):
                 return
-            if not message.text.isdigit():
+            if message.text.isdigit():
+                number = self.gira_project_key + '-' + message.text
+            elif re.compile(r'\b[A-Z]+-[0-9]+\b').search(message.text):
+                number = message.text
+            elif re.compile(r'\b[A-Za-z]+-[0-9]+\b').search(message.text):
+                number = message.text.upper()
+            else:
                 self.send_invalid_claim_message(message)
                 return
-            number = message.text
 
         # Запрашиваем информацию по заявке
         jira_token = supabase_client.get_token_from_supabase(self.username)
@@ -428,7 +435,7 @@ class TelegramBot:
                 if claim_info['last_comment']:
                     self.bot.send_message(
                         message.chat.id,
-                        f"Статус заявки №{number}: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
+                        f"Статус заявки {number}: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
                         f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
                         f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nПоследний комментарий "
                         f"оставлен <b>{claim_info['last_comment']['author']}</b> в "

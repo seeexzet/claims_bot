@@ -41,8 +41,8 @@ class JiraClient():
 
     def add_attachment_to_claim(self, claim_number: int, downloaded_file, filename):
         try:
-            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
-            response = self.jira.add_attachment(issue=issue, attachment=downloaded_file, filename=filename)
+            # issue = self.jira.issue(self.project_key + '-' + str(claim_number))
+            response = self.jira.add_attachment(issue=claim_number, attachment=downloaded_file, filename=filename)
             return response
         except Exception as e:
             print(f"Ошибка при загрузке файла в Jira: {e}")
@@ -50,7 +50,7 @@ class JiraClient():
 
     def check_claim_status(self, claim_number, username):
         try:
-            issue = self.jira.issue(self.project_key+'-'+str(claim_number))
+            issue = self.jira.issue(claim_number)
             if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:     #self.jira.myself().get("accountId"):
                 comments = issue.fields.comment.comments
                 print('comments=', comments)
@@ -82,19 +82,26 @@ class JiraClient():
 
     def add_comment_to_claim(self, claim_number, username, comment_text):
         try:
-            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
+            print('claim_number=', claim_number)
+            issue = self.jira.issue(claim_number)
+
             if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:
-                return self.jira.add_comment(self.project_key+'-'+str(claim_number), comment_text)
+                return self.jira.add_comment(issue, comment_text)
             else:
                 return None
         except JIRAError as e:
+            print(e)
             return None
 
-    def get_claims_numbers(self):
+    def get_claims_numbers_and_themes(self):
         jql_query =  f"reporter = currentUser() AND project = {self.project_key}"
         issues = self.jira.search_issues(jql_query, maxResults=1000)
-        issue_keys = [int(issue.key.split('-')[1]) for issue in issues]
-        return list(reversed(issue_keys))
+        claims = []
+        for issue in issues:
+            number = issue.key #int(issue.key.split('-')[1])
+            theme = issue.fields.summary
+            claims.append({'number': number, 'theme': theme})
+        return list(reversed(claims))
 
     def clear_token(self):
         if hasattr(self.jira, '_session'):
