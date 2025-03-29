@@ -216,6 +216,10 @@ class TelegramBot:
             number = call.data.split('_')[1]
             self.comment_message(call, number)
 
+        elif call.data.startswith('subscribe_'):
+            number = call.data.split('_')[1]
+            self.add(call, number)
+
         elif call.data.startswith("upload_yes"):
             # Пользователь выбрал загрузку документа. Извлекаем issue_key из callback_data.
             # issue_key = call.data.split("_")[-1]
@@ -513,7 +517,12 @@ class TelegramBot:
                 comment_button = types.InlineKeyboardButton(
                     text="Оставить комментарий", callback_data=f"comment_{number}"
                 )
+                markup = types.InlineKeyboardMarkup()
+                subscribe_button = types.InlineKeyboardButton(
+                    text="Подписаться на обновления по заявке", callback_data=f"subscribe_{number}"
+                )
                 markup.add(comment_button)
+                markup.add(subscribe_button)
                 if claim_info['last_comment']:
                     self.bot.send_message(
                         message.chat.id,

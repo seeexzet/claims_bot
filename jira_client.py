@@ -102,6 +102,9 @@ class JiraClient():
             claims.append({'number': number, 'theme': theme})
         return list(reversed(claims))
 
+    def get_claim_by_number(self, claim_number):
+        return self.jira.issue(claim_number)
+
     def clear_token(self):
         if hasattr(self.jira, '_session'):
             self.jira._session.headers.pop('Authorization', None)
