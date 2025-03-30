@@ -50,6 +50,7 @@ class JiraClient():
 
     def check_claim_status(self, claim_number, username):
         try:
+            print('Проверим статус заявки')
             issue = self.jira.issue(claim_number)
             if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:     #self.jira.myself().get("accountId"):
                 comments = issue.fields.comment.comments
@@ -61,7 +62,7 @@ class JiraClient():
                     last_comment = None
                     last_comment_author = None
                     last_comment_created = None
-
+                print('Проверили статус заявки')
                 return {
                     'status': issue.fields.status.name,
                     'last_update': self.readable_time(issue.fields.updated),

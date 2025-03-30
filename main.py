@@ -1,5 +1,7 @@
 import jira
 import telebot
+import schedule
+import threading
 from telebot import types
 import os
 import re
@@ -34,16 +36,22 @@ class TelegramBot:
         self.middle_priority = os.environ.get("MIDDLE_PRIORITY")
         self.high_priority = os.environ.get("HIGH_PRIORITY")
         self.field_claims_number_in_jira = os.environ.get("FIELD_CLAIMS_NUMBER_IN_JIRA")
+
+        self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
+        self.field_chat_id = os.environ.get("FIELD_SUBSCRIBE_CHAT_ID")
+        self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
+        self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
+
         self.todo_status = os.environ.get("GIRA_TODO_STATUS")
         self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
         self.done_status = os.environ.get("GIRA_TODO_DONE")
         self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
         self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
         self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
-
         self.gira_project_key = os.environ.get("GIRA_PROJECT_KEY")
 
         self.register_handlers()
+        self.start_polling_scheduler()
         self.reg_data = {}
         self.attachment = None
 
@@ -292,6 +300,7 @@ class TelegramBot:
             self.attachment=file_data
             self.filename=filename
             self.bot.send_message(message.chat.id, f"Файл {filename} успешно прикреплён к заявке.")
+            self.bot.send_message(message.chat.id, f"Формирую заявку...")
             self.upload_claim(message)
         else:
             self.bot.send_message(message.chat.id, "Документ не найден.")
@@ -502,8 +511,6 @@ class TelegramBot:
             else:
                 self.send_invalid_claim_message(message)
                 return
-
-        # Запрашиваем информацию по заявке
         supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
         if jira_token:
@@ -585,6 +592,48 @@ class TelegramBot:
         else:
             self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
             self.create_keyboard(message.chat.id, self.username)
+
+    def poll_issue_status(self):
+        supabase_client = self.initialize_supabase_client()
+        subscriptions = self.supabase_client.get_subscriptions()
+        for sub in subscriptions:
+            claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
+            chat_id = sub[self.field_chat_id]
+            username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
+            last_status = sub.get(self.field_claim_status, "")
+            # print('self.username=', self.username, ' type=', type(self.username))
+            print('Проверка статуса ', self.username, ' ', claim_number)
+            try:
+                jira_token = supabase_client.get_token_from_supabase(self.username)
+                jira_client = JiraClient(jira_token)
+                del jira_token
+                current_status = jira_client.check_claim_status(claim_number, self.username)['status']
+                print('current_status=', current_status, ' last=', last_status)
+                jira_client.logout()
+                if current_status != last_status:
+                    # Обновляем статус в Supabase
+                    print('Статусы отличаются')
+                    supabase_client.update_subscription_status(self.username, claim_number, chat_id, current_status)
+                    # Уведомляем подписчика
+                    self.bot.send_message(chat_id, f"Статус заявки {claim_number} изменился на: {current_status}.")
+            except Exception as e:
+                print(f"Ошибка опроса заявки {claim_number}: {e}")
+            supabase_client.logout()
+
+    def start_polling_scheduler(self):
+        schedule.every(0.1).minutes.do(self.poll_issue_status)
+
+        def run_schedule():
+            while True:
+                schedule.run_pending()
+                time.sleep(1)
+
+        t = threading.Thread(target=run_schedule)
+        t.daemon = True
+        t.start()
+
+    def run(self):
+        self.bot.polling(none_stop=True)
 
     def initialize_supabase_client(self):
         self.supabase_client = SupabaseClient()

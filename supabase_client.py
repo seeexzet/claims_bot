@@ -22,13 +22,11 @@ class SupabaseClient:
         self.field_phone = os.environ.get("FIELD_PHONE")
         self.field_token = os.environ.get("FIELD_TOKEN")
 
-        self.table_claims = os.environ.get("TABLE_CLAIM")
-        self.field_claims_user_id = os.environ.get("FIELD_CLAIMS_USER_ID")
-        self.field_claims_priority = os.environ.get("FIELD_CLAIMS_PRIORITY")
-        self.field_claims_theme = os.environ.get("FIELD_CLAIMS_THEME")
-        self.field_claims_text = os.environ.get("FIELD_CLAIMS_TEXT")
-        self.field_claims_text_new_status = os.environ.get("FIELD_CLAIMS_TEXT_NEW_STATUS")
-        self.field_claims_number_in_jira = os.environ.get("FIELD_CLAIMS_NUMBER_IN_JIRA")
+        self.table_subscriptions = os.environ.get("TABLE_SUBSCRIBE")
+        self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
+        self.field_chat_id = os.environ.get("FIELD_SUBSCRIBE_CHAT_ID")
+        self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
+        self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
         # Создать клиента Supabase с использованием анонимного ключа
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
@@ -46,9 +44,11 @@ class SupabaseClient:
         return response
 
     def check_user(self, username: int) -> bool:
+        print('ttt ',username, type(username))
         try:
             response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
             data = response.data
+            print(data)
             return bool(data and len(data) > 0)
         except Exception as e:
             return False
@@ -66,7 +66,7 @@ class SupabaseClient:
             try:
                 # response = self.client.table(self.table_username).insert(data).execute()
                 response = self.client.rpc(self.supabase_func_of_insert, {
-                    "user_tg": int(username),
+                    self.field_username : int(username),
                     "token": token,
                     "enc_key": self.secret_code_for_token
                 }).execute()
@@ -90,6 +90,17 @@ class SupabaseClient:
                 return None
         return None
 
+    def get_username_by_user_id(self, user_id: int):
+        try:
+            response = self.client.table(self.table_username).select(self.field_username).eq("id", user_id).execute()
+            data = response.data
+            if data and len(data) > 0:
+                return data[0].get(self.field_username)
+        except Exception as e:
+                print(f"Error searching user '{user_id}': {str(e)}")
+                return None
+        return None
+
     def get_token_from_supabase(self, username: int):
         if self.check_user(username):
             try:
@@ -110,47 +121,60 @@ class SupabaseClient:
         else:
             print(f"Нет пользователя с именем {username}")
 
-    def create_claim(self, username: str, claim_data: dict, jira_claim_number: int):
-        user_id = self.get_user_id_by_username(username)
-        data = {
-            self.field_claims_user_id : user_id,
-            self.field_claims_text: claim_data["text"],
-            self.field_claims_theme: claim_data["theme"],
-            self.field_claims_priority: claim_data["priority"],
-            self.field_claims_number_in_jira: jira_claim_number
-        }
-        print(data)
-        try:
-            response = self.client.table(self.table_claims).insert(data).execute()
-            return response.data
-        except Exception as e:
-            print(f"Error creating claim for user '{username}': {str(e)}")
-            return None
-
-    def get_claims_numbers_and_themes(self, username: int):
-        if self.check_user(username):
-            user_id = self.get_user_id_by_username(username) # находим user_id
-            try:
-                response = self.client.table(self.table_claims).select(self.field_claims_number_in_jira).eq(self.field_claims_user_id, user_id).execute() # поиск всех заявок
-                # response = self.client.table(self.table_claims).select(self.field_claims_status).eq(self.field_claims_user_id, user_id).execute()
-                data = response.data
-                claim_numbers = [claim.get(self.field_claims_number_in_jira) for claim in data]
-                return claim_numbers
-            except Exception as e:
-                print(f"Error get claim numbers for user '{username}': {str(e)}")
-                return False
-        return False
-
     def delete_user(self, username: int):
         try:
-            response = self.client.table("users") \
+            response = self.client.table(self.table_username) \
                 .delete(returning="representation") \
-                .eq("user_tg", username) \
+                .eq(self.field_username, username) \
                 .execute()
             return response.data
         except Exception as e:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
+
+    def save_subscription(self, username, chat_id, claim_number, status):
+        try:
+            user_id = self.get_user_id_by_username(username)
+            response = self.client.table(self.table_subscriptions).insert({
+                self.field_user_id: user_id,
+                self.field_chat_id: chat_id,
+                self.field_claim_number: claim_number,
+                self.field_claim_status: status
+            }).execute()
+            return response
+        except Exception as e:
+            print(f"Ошибка сохранения подписки: {e}")
+            return None
+
+    def get_subscriptions(self):
+        """
+        Возвращает список подписок.
+        Каждая подписка – словарь с ключами: username, issue_key, chat_id, last_status.
+        """
+        try:
+            response = self.client.table(self.table_subscriptions).select("*").execute()
+            return response.data
+        except Exception as e:
+            print(f"Ошибка получения подписок: {e}")
+            return None
+
+    def update_subscription_status(self, username, claim_number, chat_id, new_status):
+        try:
+            user_id = self.get_user_id_by_username(username)
+            print(user_id, chat_id, claim_number.split('-')[1], new_status)
+            # response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status}).match({
+            #     self.field_user_id: user_id,
+            #     self.field_chat_id: chat_id,
+            #     self.field_claim_number: int(claim_number.split('-')[1])
+            # }).execute()
+            response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
+                .eq(self.field_user_id, user_id)\
+                .eq(self.field_chat_id, chat_id)\
+                .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
+            .execute()
+            print(f"Поменяли статус в базе", response)
+        except Exception as e:
+            print(f"Ошибка обновления статуса подписки: {e}")
 
     def logout(self):
         try:
@@ -164,32 +188,47 @@ class SupabaseClient:
 
 if __name__ == "__main__":
     supabase_client = SupabaseClient()
+    supabase_client.sign_in()
 
-    # Получить данные из таблицы до аутентификации
-    response = supabase_client.get_data("users").data
-    print("Данные из таблицы (без аутентификации): ", response)
+    # # Получить данные из таблицы до аутентификации
+    # response = supabase_client.get_data("users").data
+    # print("Данные из таблицы (без аутентификации): ", response)
+    #
+    # # Выполнить аутентификацию пользователя
+    # auth_response = supabase_client.sign_in()
+    # print("Результат аутентификации:", auth_response)
+    #
+    # # Получить данные из таблицы после аутентификации
+    # response = supabase_client.get_data("sample_table").data
+    # print("Данные из таблицы (после аутентификации):", response)
+    #
+    # # Проверка на наличие пользователя в БД
+    # response_check_user = supabase_client.check_user("user2")
+    # print("Проверка наличия пользователя:", response_check_user)
+    #
+    # # # Проверка на вставку данных в БД
+    # # response_insert_data = supabase_client.add_user("tgname2")
+    # # print("Проверка вставки данных:", response_insert_data)
+    #
+    # # Проверка на создание заявки
+    # claim_data = {'priority': 'low', 'theme': 'Всё плохо', 'text': 'Все очень плохо'}
+    # response_add_claim = supabase_client.create_claim("@tgname", claim_data)
+    # print("Проверка на создание заявки:", response_add_claim)
+    #
+    # # Проверка номеров заявок
+    # response_get_claim_numbers = supabase_client.get_claims_numbers("user1")
+    # print("У пользователя есть заявки:", response_get_claim_numbers)
 
-    # Выполнить аутентификацию пользователя
-    auth_response = supabase_client.sign_in()
-    print("Результат аутентификации:", auth_response)
+    # # Записать подписку
+    # response = supabase_client.save_subscription(1, 2222, "default_status").data
+    # print("Результат записи новых данных в таблицу подписок: ", response)
+    #
+    # # Получить подписки
+    # response = supabase_client.get_subscriptions()
+    # print("Все подписки: ", response)
 
-    # Получить данные из таблицы после аутентификации
-    response = supabase_client.get_data("sample_table").data
-    print("Данные из таблицы (после аутентификации):", response)
+    # Получить имя пользователя по id
+    # response = supabase_client.get_username_by_user_id(27)
+    # print("Имя пользователя по id: ", response)
 
-    # Проверка на наличие пользователя в БД
-    response_check_user = supabase_client.check_user("user2")
-    print("Проверка наличия пользователя:", response_check_user)
 
-    # # Проверка на вставку данных в БД
-    # response_insert_data = supabase_client.add_user("tgname2")
-    # print("Проверка вставки данных:", response_insert_data)
-
-    # Проверка на создание заявки
-    claim_data = {'priority': 'low', 'theme': 'Всё плохо', 'text': 'Все очень плохо'}
-    response_add_claim = supabase_client.create_claim("@tgname", claim_data)
-    print("Проверка на создание заявки:", response_add_claim)
-
-    # Проверка номеров заявок
-    response_get_claim_numbers = supabase_client.get_claims_numbers("user1")
-    print("У пользователя есть заявки:", response_get_claim_numbers)
