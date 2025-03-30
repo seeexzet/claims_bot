@@ -160,21 +160,22 @@ class SupabaseClient:
 
     def update_subscription_status(self, username, claim_number, chat_id, new_status):
         try:
-            user_id = self.get_user_id_by_username(username)
-            print(user_id, chat_id, claim_number.split('-')[1], new_status)
-            # response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status}).match({
-            #     self.field_user_id: user_id,
-            #     self.field_chat_id: chat_id,
-            #     self.field_claim_number: int(claim_number.split('-')[1])
-            # }).execute()
-            response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
-                .eq(self.field_user_id, user_id)\
-                .eq(self.field_chat_id, chat_id)\
-                .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
-            .execute()
-            print(f"Поменяли статус в базе", response)
+                user_id = self.get_user_id_by_username(username)
+                print(user_id, chat_id, claim_number.split('-')[1], new_status)
+                # response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status}).match({
+                #     self.field_user_id: user_id,
+                #     self.field_chat_id: chat_id,
+                #     self.field_claim_number: int(claim_number.split('-')[1])
+                # }).execute()
+                response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
+                    .eq(self.field_user_id, user_id)\
+                    .eq(self.field_chat_id, chat_id)\
+                    .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
+                .execute()
+                print(f"Поменяли статус в базе", response)
         except Exception as e:
-            print(f"Ошибка обновления статуса подписки: {e}")
+                print(f"Ошибка обновления статуса подписки: {e}")
+
 
     def logout(self):
         try:
