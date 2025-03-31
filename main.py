@@ -89,40 +89,42 @@ class TelegramBot:
         markup = types.InlineKeyboardMarkup()
         # подключение к Supabase
         supabase_client = self.initialize_supabase_client()
-        if self.supabase_client.check_user(user_id):
-            button0 = types.InlineKeyboardButton('Сбросить регистрацию', callback_data='button0')
-            markup.add(button0)
+        if self.supabase_client.check_user_token(user_id):
+            button_reset_reg = types.InlineKeyboardButton('Сбросить регистрацию', callback_data='button_reset_reg')
+            markup.add(button_reset_reg)
+            button_create_claim = types.InlineKeyboardButton('Оставить заявку', callback_data='button_create_claim')
+            button_all_claims = types.InlineKeyboardButton('Все открытые заявки', callback_data='button_all_claims')
+            button_all_subs = types.InlineKeyboardButton('Все подписки на обновления', callback_data='button_all_subs')
+            button_check_claim = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button_check_claim')
+            markup.add(button_create_claim)
+            markup.add(button_all_claims)
+            markup.add(button_all_subs)
+            markup.add(button_check_claim)
         else:
-            button1 = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button1')
-            markup.add(button1)
+            button_reg = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button_reg')
+            markup.add(button_reg)
         supabase_client.logout()
         self.supabase_client = None
-        button2 = types.InlineKeyboardButton('Оставить заявку', callback_data='button2')
-        button3 = types.InlineKeyboardButton('Все открытые заявки', callback_data='button3')
-        button4 = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button4')
-        markup.add(button2)
-        markup.add(button3)
-        markup.add(button4)
         self.bot.send_message(chat_id, "Выберите одну из кнопок:", reply_markup=markup)
 
     def priority_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        button5 = types.InlineKeyboardButton('Низкий', callback_data='button5')
-        button6 = types.InlineKeyboardButton('Средний', callback_data='button6')
-        button7 = types.InlineKeyboardButton('Высокий', callback_data='button7')
-        markup.add(button5)
-        markup.add(button6)
-        markup.add(button7)
+        button_low = types.InlineKeyboardButton('Низкий', callback_data='button_low')
+        button_middle = types.InlineKeyboardButton('Средний', callback_data='button_middle')
+        button_high = types.InlineKeyboardButton('Высокий', callback_data='button_high')
+        markup.add(button_low)
+        markup.add(button_middle)
+        markup.add(button_high)
         self.bot.send_message(chat_id, "Выберите приоритет заявки:", reply_markup=markup)
 
     def type_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        button8 = types.InlineKeyboardButton(self.typetask_field_1, callback_data='button8')
-        button9 = types.InlineKeyboardButton(self.typetask_field_2, callback_data='button9')
-        button10 = types.InlineKeyboardButton(self.typetask_field_3, callback_data='button10')
-        markup.add(button8)
-        markup.add(button9)
-        markup.add(button10)
+        button_type1 = types.InlineKeyboardButton(self.typetask_field_1, callback_data='button_type1')
+        button_type2 = types.InlineKeyboardButton(self.typetask_field_2, callback_data='button_type2')
+        button_type3 = types.InlineKeyboardButton(self.typetask_field_3, callback_data='button_type3')
+        markup.add(button_type1)
+        markup.add(button_type2)
+        markup.add(button_type3)
         self.bot.send_message(chat_id, "Выберите тип заявки:", reply_markup=markup)
 
     def attachenent_keyboard(self, chat_id):
@@ -136,15 +138,15 @@ class TelegramBot:
         user = call.from_user
         self.username = user.id
 
-        if call.data == 'button0':
+        if call.data == 'button_reset_reg':
             self.bot.answer_callback_query(call.id, "Вы нажали Сбросить регистрацию")
             self.reset_keyboard(call.message.chat.id)
 
-        if call.data == 'button1':
+        if call.data == 'button_reg':
             self.bot.answer_callback_query(call.id, "Вы нажали Регистрация пользователя")
             self.registration(call)
 
-        elif call.data == 'button2':
+        elif call.data == 'button_create_claim':
             self.bot.answer_callback_query(call.id, "Вы нажали Оставить заявку")
             self.claim_data = {}
             supabase_client = self.initialize_supabase_client()
@@ -158,7 +160,7 @@ class TelegramBot:
             supabase_client.logout()
             self.supabase_client = None
 
-        elif call.data == 'button3':
+        elif call.data == 'button_all_claims':
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             supabase_client = self.initialize_supabase_client()
             if supabase_client.check_user(self.username):
@@ -190,29 +192,29 @@ class TelegramBot:
             self.supabase_client = None
 
 
-        elif call.data == 'button4':
+        elif call.data == 'button_check_claim':
             # посмотреть статус конкретной заявки
             self.get_claim_input_number(call)
 
-        elif call.data == 'button5':
+        elif call.data == 'button_low':
             # выбран низкий статус заявки
             self.handle_priority_selection(call, self.low_priority, "низкий")
 
-        elif call.data == 'button6':
+        elif call.data == 'button_middle':
             # выбран средний уровень обработки заявок
             self.handle_priority_selection(call, self.middle_priority, "средний")
 
-        elif call.data == 'button7':
+        elif call.data == 'button_high':
             # выбран высокий уровень обработки заявок
             self.handle_priority_selection(call, self.high_priority, "высокий")
 
-        elif call.data == 'button8':
+        elif call.data == 'button_type1':
             self.process_claim_type(call, self.typetask_field_1)
 
-        elif call.data == 'button9':
+        elif call.data == 'button_type2':
             self.process_claim_type(call, self.typetask_field_2)
 
-        elif call.data == 'button10':
+        elif call.data == 'button_type3':
             self.process_claim_type(call, self.typetask_field_3)
 
         elif call.data.startswith('claim_'):
@@ -254,15 +256,15 @@ class TelegramBot:
     def reset_registration(self, message):
         if not self.if_start(message) and not self.if_help(message):
             supabase_client = self.initialize_supabase_client()
-            if supabase_client.check_user(self.username):
-                response = supabase_client.delete_user(self.username)
+            if supabase_client.check_user_token(self.username):
+                response = supabase_client.delete_user_token(self.username)
                 supabase_client.logout()
                 self.supabase_client = None
                 if response:
-                    self.bot.send_message(message.chat.id, f"Пользователь был успешно удалён, пройдите регистрацию заново для дальнейшей работы")
+                    self.bot.send_message(message.chat.id, f"Токен пользователя был успешно удалён, пройдите регистрацию заново для дальнейшей работы")
                     self.create_keyboard(message.chat.id, self.username)
                 else:
-                    self.bot.send_message(message.chat.id, f"Не удалось удалить пользователя")
+                    self.bot.send_message(message.chat.id, f"Не удалось удалить токен пользователя")
             else:
                 self.bot.send_message(message.chat.id, f"Пользователь не зарегистрирован")
                 self.create_keyboard(message.chat.id, self.username)
@@ -325,7 +327,7 @@ class TelegramBot:
 
     def registration(self, call):
         supabase_client = self.initialize_supabase_client()
-        if not supabase_client.check_user(self.username):
+        if not supabase_client.check_user_token(self.username):
             self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
             # функции для регистрации
             self.bot.send_message(
@@ -619,34 +621,38 @@ class TelegramBot:
         supabase_client = self.initialize_supabase_client()
         user_list = supabase_client.get_user_list()
         for user in user_list:
-            subscriptions = self.supabase_client.get_subscriptions(user)
+            subscriptions = supabase_client.get_subscriptions(user)
             print(subscriptions)
             jira_token = supabase_client.get_token_from_supabase(user)
-            jira_client = JiraClient(jira_token)
-            del jira_token
-            for sub in subscriptions:
-                claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
-                # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
-                last_status = sub.get(self.field_claim_status, "")
-                print('Проверка статуса ', user, ' ', claim_number)
-                try:
-                    current_status = jira_client.check_claim_status(claim_number, user)['status']
-                    print('current_status=', current_status, ' last=', last_status)
-                    claim_link = jira_client.get_claim_link_by_number(claim_number)
-                    if current_status != last_status:
-                        # Обновляем статус в Supabase
-                        print('Статусы отличаются')
-                        supabase_client.update_subscription_status(user, claim_number, current_status)
-                        # Уведомляем подписчика
-                        print("self.field_chat_id = ", self.field_chat_id)
-                        self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
-                except Exception as e:
-                    print(f"Ошибка опроса заявки {claim_number}: {e}")
+            if jira_token:
+                jira_client = JiraClient(jira_token)
+                del jira_token
+                if subscriptions:
+                    for sub in subscriptions:
+                        claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
+                        # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
+                        last_status = sub.get(self.field_claim_status, "")
+                        print('Проверка статуса ', user, ' ', claim_number)
+                        try:
+                            current_status = jira_client.check_claim_status(claim_number, user)['status']
+                            print('current_status=', current_status, ' last=', last_status)
+                            claim_link = jira_client.get_claim_link_by_number(claim_number)
+                            if current_status != last_status:
+                                # Обновляем статус в Supabase
+                                print('Статусы отличаются')
+                                supabase_client.update_subscription_status(user, claim_number, current_status)
+                                # Уведомляем подписчика
+                                print("self.field_chat_id = ", self.field_chat_id)
+                                self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
+                        except Exception as e:
+                            print(f"Ошибка опроса заявки {claim_number}: {e}")
                 jira_client.logout()
+            # else:
+            #     self.bot.send_message(user, f"У вас нет подписок")
         supabase_client.logout()
 
     def start_polling_scheduler(self):
-        schedule.every(0.15).minutes.do(self.poll_issue_status)
+        schedule.every(999).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:

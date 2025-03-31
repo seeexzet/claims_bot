@@ -13,6 +13,7 @@ class SupabaseClient:
         self.secret_code_for_token = os.environ.get("SUPABASE_SECRET_CODE_FOR_TOKEN")
         self.supabase_func_of_read = os.environ.get("SUPABASE_FUNCTION_OF_READ")
         self.supabase_func_of_insert = os.environ.get("SUPABASE_FUNCTION_OF_INSERT")
+        self.supabase_func_of_delete = os.environ.get("SUPABASE_FUNCTION_OF_DELETE")
 
         self.table_users = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
@@ -43,12 +44,19 @@ class SupabaseClient:
         return response
 
     def check_user(self, username: int) -> bool:
-        print('ttt ',username, type(username))
         try:
             response = self.client.table(self.table_users).select(self.field_username).eq(self.field_username, username).execute()
             data = response.data
             print(data)
             return bool(data and len(data) > 0)
+        except Exception as e:
+            return False
+
+    def check_user_token(self, username: int) -> bool:
+        try:
+            response = self.client.table(self.table_users).select(self.field_token).eq(self.field_username, username).execute()
+            print('response.data ', response.data)
+            return response.data
         except Exception as e:
             return False
 
@@ -103,9 +111,9 @@ class SupabaseClient:
     def get_token_from_supabase(self, username: int):
         if self.check_user(username):
             try:
-                response = self.client.rpc(self.supabase_func_of_read, {
-                    "p_name": username,
-                    "p_key": self.secret_code_for_token
+                response = self.client.rpc(self.supabase_func_of_delete, {
+                    self.field_username: username,
+                    self.field_token: self.secret_code_for_token
                 }).execute()
 
                 if response.data:
@@ -119,6 +127,18 @@ class SupabaseClient:
                 return None
         else:
             print(f"Нет пользователя с именем {username}")
+
+    def delete_user_token(self, username: int):
+        try:
+            response = self.client.rpc(self.supabase_func_of_delete, {
+                "p_name": username,
+                "p_key": self.secret_code_for_token
+            }).execute()
+            print("Что вернулось при удалении ", response.data)
+            return response.data
+        except Exception as e:
+            print(f"Ошибка удаления токена пользователя {username}: {e}")
+            return None
 
     def delete_user(self, username: int):
         try:
@@ -150,7 +170,7 @@ class SupabaseClient:
             response = self.client.table(self.table_subscriptions).select("*").eq(self.field_user_id, user_id).execute()
             return response.data
         except Exception as e:
-            print(f"Ошибка получения подписок: {e}")
+            print(f"Ошибка получения подписок__: {e}")
             return None
 
     def is_subscription(self, username, number):
@@ -165,6 +185,7 @@ class SupabaseClient:
         except Exception as e:
             print(f"Ошибка проверки подписки: {e}")
             return None
+
     def get_user_list(self):
         try:
             response = self.client.table(self.table_users).select(self.field_username).execute()
