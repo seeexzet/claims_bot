@@ -24,7 +24,6 @@ class SupabaseClient:
 
         self.table_subscriptions = os.environ.get("TABLE_SUBSCRIBE")
         self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
-        self.field_chat_id = os.environ.get("FIELD_SUBSCRIBE_CHAT_ID")
         self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
         self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
         # Создать клиента Supabase с использованием анонимного ключа
@@ -132,13 +131,12 @@ class SupabaseClient:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
 
-    def save_subscription(self, username, chat_id, claim_number, status):
+    def save_subscription(self, username, claim_number, status):
         try:
             user_id = self.get_user_id_by_username(username)
             response = self.client.table(self.table_subscriptions).insert({
                 self.field_user_id: user_id,
-                self.field_chat_id: chat_id,
-                self.field_claim_number: claim_number,
+                self.field_claim_number: claim_number.split('-')[1],
                 self.field_claim_status: status
             }).execute()
             return response
@@ -157,25 +155,34 @@ class SupabaseClient:
         except Exception as e:
             print(f"Ошибка получения подписок: {e}")
             return None
+    def is_subscription(self, username, number):
+        try:
+            user_id = self.get_user_id_by_username(username)
+            if not user_id:
+                print(f"Пользователя {username} нет в базе")
+                return None
+            response = self.client.table(self.table_subscriptions).select("*").eq(self.field_user_id, user_id).eq(self.field_claim_number, number.split('-')[1]).execute()
+            data = response.data
+            return data[0] if data else None
+        except Exception as e:
+            print(f"Ошибка проверки подписки: {e}")
+            return None
 
-    def update_subscription_status(self, username, claim_number, chat_id, new_status):
+    def update_subscription_status(self, username, claim_number, new_status):
         try:
                 user_id = self.get_user_id_by_username(username)
-                print(user_id, chat_id, claim_number.split('-')[1], new_status)
+                print('dddd ', user_id, claim_number.split('-')[1], new_status)
                 # response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status}).match({
                 #     self.field_user_id: user_id,
-                #     self.field_chat_id: chat_id,
                 #     self.field_claim_number: int(claim_number.split('-')[1])
                 # }).execute()
                 response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
                     .eq(self.field_user_id, user_id)\
-                    .eq(self.field_chat_id, chat_id)\
                     .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
                 .execute()
                 print(f"Поменяли статус в базе", response)
         except Exception as e:
                 print(f"Ошибка обновления статуса подписки: {e}")
-
 
     def logout(self):
         try:
@@ -229,7 +236,8 @@ if __name__ == "__main__":
     # print("Все подписки: ", response)
 
     # Получить имя пользователя по id
-    # response = supabase_client.get_username_by_user_id(27)
-    # print("Имя пользователя по id: ", response)
+    response = supabase_client.get_username_by_user_id(27)
+    print("Имя пользователя по id: ", response)
 
-
+    # # Проверка метода существования записи в подписках
+    # print(supabase_client.is_subscription(username, claim_number))
