@@ -617,31 +617,32 @@ class TelegramBot:
 
     def poll_issue_status(self):
         supabase_client = self.initialize_supabase_client()
-        subscriptions = self.supabase_client.get_subscriptions()
-        print(subscriptions)
-        for sub in subscriptions:
-            claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
-            print("sub[self.field_user_id]=", sub[self.field_user_id])
-            username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
-            print("username=", username)
-            last_status = sub.get(self.field_claim_status, "")
-            print('Проверка статуса ', username, ' ', claim_number)
-            try:
-                jira_token = supabase_client.get_token_from_supabase(username)
-                jira_client = JiraClient(jira_token)
-                del jira_token
-                current_status = jira_client.check_claim_status(claim_number, username)['status']
-                print('current_status=', current_status, ' last=', last_status)
+        user_list = supabase_client.get_user_list()
+        for user in user_list:
+            subscriptions = self.supabase_client.get_subscriptions(user)
+            print(subscriptions)
+            jira_token = supabase_client.get_token_from_supabase(user)
+            jira_client = JiraClient(jira_token)
+            del jira_token
+            for sub in subscriptions:
+                claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
+                # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
+                last_status = sub.get(self.field_claim_status, "")
+                print('Проверка статуса ', user, ' ', claim_number)
+                try:
+                    current_status = jira_client.check_claim_status(claim_number, user)['status']
+                    print('current_status=', current_status, ' last=', last_status)
+                    claim_link = jira_client.get_claim_link_by_number(claim_number)
+                    if current_status != last_status:
+                        # Обновляем статус в Supabase
+                        print('Статусы отличаются')
+                        supabase_client.update_subscription_status(user, claim_number, current_status)
+                        # Уведомляем подписчика
+                        print("self.field_chat_id = ", self.field_chat_id)
+                        self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
+                except Exception as e:
+                    print(f"Ошибка опроса заявки {claim_number}: {e}")
                 jira_client.logout()
-                if current_status != last_status:
-                    # Обновляем статус в Supabase
-                    print('Статусы отличаются')
-                    supabase_client.update_subscription_status(username, claim_number, current_status)
-                    # Уведомляем подписчика
-                    print("self.field_chat_id = ", self.field_chat_id)
-                    self.bot.send_message(username, f"Статус заявки {claim_number} изменился на: {current_status}.")
-            except Exception as e:
-                print(f"Ошибка опроса заявки {claim_number}: {e}")
         supabase_client.logout()
 
     def start_polling_scheduler(self):

@@ -14,7 +14,7 @@ class SupabaseClient:
         self.supabase_func_of_read = os.environ.get("SUPABASE_FUNCTION_OF_READ")
         self.supabase_func_of_insert = os.environ.get("SUPABASE_FUNCTION_OF_INSERT")
 
-        self.table_username = os.environ.get("TABLE_USERNAME")
+        self.table_users = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
         self.field_fio = os.environ.get("FIELD_FIO")
         self.field_company = os.environ.get("FIELD_COMPANY")
@@ -39,13 +39,13 @@ class SupabaseClient:
         return auth_response
 
     def get_data(self, table_name: str):
-        response = self.client.table(self.table_username).select("*").execute()
+        response = self.client.table(self.table_users).select("*").execute()
         return response
 
     def check_user(self, username: int) -> bool:
         print('ttt ',username, type(username))
         try:
-            response = self.client.table(self.table_username).select(self.field_username).eq(self.field_username, username).execute()
+            response = self.client.table(self.table_users).select(self.field_username).eq(self.field_username, username).execute()
             data = response.data
             print(data)
             return bool(data and len(data) > 0)
@@ -63,7 +63,7 @@ class SupabaseClient:
                 # self.field_phone: registration_data['phone']
             }
             try:
-                # response = self.client.table(self.table_username).insert(data).execute()
+                # response = self.client.table(self.table_users).insert(data).execute()
                 response = self.client.rpc(self.supabase_func_of_insert, {
                     self.field_username : int(username),
                     "token": token,
@@ -80,7 +80,7 @@ class SupabaseClient:
     def get_user_id_by_username(self, username: int):
         if self.check_user(username):
             try:
-                response = self.client.table(self.table_username).select("id").eq(self.field_username, username).execute()
+                response = self.client.table(self.table_users).select("id").eq(self.field_username, username).execute()
                 data = response.data
                 if data and len(data) > 0:
                     return data[0].get("id")
@@ -91,7 +91,7 @@ class SupabaseClient:
 
     def get_username_by_user_id(self, user_id: int):
         try:
-            response = self.client.table(self.table_username).select(self.field_username).eq("id", user_id).execute()
+            response = self.client.table(self.table_users).select(self.field_username).eq("id", user_id).execute()
             data = response.data
             if data and len(data) > 0:
                 return data[0].get(self.field_username)
@@ -122,7 +122,7 @@ class SupabaseClient:
 
     def delete_user(self, username: int):
         try:
-            response = self.client.table(self.table_username) \
+            response = self.client.table(self.table_users) \
                 .delete(returning="representation") \
                 .eq(self.field_username, username) \
                 .execute()
@@ -144,17 +144,15 @@ class SupabaseClient:
             print(f"Ошибка сохранения подписки: {e}")
             return None
 
-    def get_subscriptions(self):
-        """
-        Возвращает список подписок.
-        Каждая подписка – словарь с ключами: username, issue_key, chat_id, last_status.
-        """
+    def get_subscriptions(self, username):
+        user_id = self.get_user_id_by_username(username)
         try:
-            response = self.client.table(self.table_subscriptions).select("*").execute()
+            response = self.client.table(self.table_subscriptions).select("*").eq(self.field_user_id, user_id).execute()
             return response.data
         except Exception as e:
             print(f"Ошибка получения подписок: {e}")
             return None
+
     def is_subscription(self, username, number):
         try:
             user_id = self.get_user_id_by_username(username)
@@ -166,6 +164,13 @@ class SupabaseClient:
             return data[0] if data else None
         except Exception as e:
             print(f"Ошибка проверки подписки: {e}")
+            return None
+    def get_user_list(self):
+        try:
+            response = self.client.table(self.table_users).select(self.field_username).execute()
+            return [usr[self.field_username] for usr in response.data]
+        except Exception as e:
+            print(f"Ошибка получения подписок: {e}")
             return None
 
     def update_subscription_status(self, username, claim_number, new_status):
@@ -241,3 +246,7 @@ if __name__ == "__main__":
 
     # # Проверка метода существования записи в подписках
     # print(supabase_client.is_subscription(username, claim_number))
+
+    # Получить всех пользователей
+    response = supabase_client.get_user_list()
+    print("Все пользователи: ", response)
