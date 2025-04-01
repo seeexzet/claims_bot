@@ -169,7 +169,7 @@ class TelegramBot:
                 if jira_token:
                     jira_client = JiraClient(jira_token)
                     del jira_token
-                    jira_claims_numbers_and_themes = jira_client.get_claims_numbers_and_themes() # раньше было через Supabase
+                    jira_claims_numbers_and_themes = jira_client.get_claims_numbers_and_themes()
                     if jira_claims_numbers_and_themes:
                         buttons = []
                         for claim in jira_claims_numbers_and_themes:
@@ -216,6 +216,9 @@ class TelegramBot:
         elif call.data == 'button_type3':
             self.process_claim_type(call, self.typetask_field_3)
 
+        elif call.data == 'main_menu_button':
+            self.create_keyboard(call.message.chat.id, self.username)
+
         elif call.data.startswith('claim_'):
             number = call.data.split('_')[1]
             self.get_claim_status(call.message, number)
@@ -227,6 +230,10 @@ class TelegramBot:
         elif call.data.startswith('subscribe_'):
             number = call.data.split('_')[1]
             self.add_subscribe(call, number)
+
+        elif call.data.startswith('unsubscribe_'):
+            number = call.data.split('_')[1]
+            self.unsubscribe_claim(call, number)
 
         elif call.data.startswith('button_all_subs_'):
             self.check_subscribe(call)
@@ -514,6 +521,7 @@ class TelegramBot:
                 self.send_invalid_claim_message(message)
                 return
         supabase_client = self.initialize_supabase_client()
+        subscribe_status = supabase_client.is_subscription(self.username, number)
         jira_token = supabase_client.get_token_from_supabase(self.username)
         if jira_token:
             jira_client = JiraClient(jira_token)
@@ -527,11 +535,17 @@ class TelegramBot:
                     text="Оставить комментарий", callback_data=f"comment_{number}"
                 )
                 markup = types.InlineKeyboardMarkup()
-                subscribe_button = types.InlineKeyboardButton(
-                    text="Подписаться на обновления по заявке", callback_data=f"subscribe_{number}"
-                )
+                if subscribe_status:
+                    subscribe_button = types.InlineKeyboardButton(
+                        text="Отписаться от обновлений по заявке", callback_data=f"unsubscribe_{number}")
+                else:
+                    subscribe_button = types.InlineKeyboardButton(
+                        text="Подписаться на обновления по заявке", callback_data=f"subscribe_{number}")
+                main_menu_button = types.InlineKeyboardButton(
+                        text="Главное меню", callback_data='main_menu_button')
                 markup.add(comment_button)
                 markup.add(subscribe_button)
+                markup.add(main_menu_button)
                 if claim_info['last_comment']:
                     self.bot.send_message(
                         message.chat.id,
@@ -544,7 +558,6 @@ class TelegramBot:
                         parse_mode='HTML',
                         reply_markup=markup
                     )
-                    self.create_keyboard(message.chat.id, self.username)
                 else:
                     self.bot.send_message(
                         message.chat.id,
@@ -554,7 +567,6 @@ class TelegramBot:
                         parse_mode='HTML',
                         reply_markup=markup
                     )
-                    self.create_keyboard(message.chat.id, self.username)
             else:
                 self.send_invalid_claim_message(message)
         else:
@@ -619,8 +631,52 @@ class TelegramBot:
             self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на обновления статуса заявки {number}")
         supabase_client.logout()
 
+    def unsubscribe_claim(self, call, number):
+        supabase_client = self.initialize_supabase_client()
+        if supabase_client.is_subscription(self.username, number):
+            response = supabase_client.delete_subscription(call.message.chat.id, number.split('-')[1])
+            if response:
+                self.bot.send_message(call.message.chat.id, f"Подписка на заявку {number} удалена")
+            else:
+                self.bot.send_message(call.message.chat.id, f"Подписку на заявку {number} не удалось удалить")
+        else:
+            self.bot.send_message(call.message.chat.id, f"Подписки на заявку {number} нет")
+        supabase_client.logout()
+
     def check_subscribe(self, call):
-        pass
+        supabase_client = self.initialize_supabase_client()
+        self.bot.answer_callback_query(call.id, "Вы нажали Посмотреть все подписки на обновления")
+        if supabase_client.check_user(self.username):
+            self.bot.send_message(call.message.chat.id, "Вы выбрали посмотреть все подписки на обновления")
+            subscriptions = supabase_client.get_subscriptions(call.message.chat.id, fields=self.field_claim_number)
+            subscription_numbers = sorted(s[self.field_claim_number] for s in subscriptions)
+            if subscription_numbers:
+                buttons = []
+                jira_token = supabase_client.get_token_from_supabase(self.username)
+                if jira_token:
+                    jira_client = JiraClient(jira_token)
+                    del jira_token
+                    for sub in subscription_numbers:
+                        number = self.gira_project_key + '-' + str(sub)
+                        theme = jira_client.get_theme_by_number(number)
+                        button = types.InlineKeyboardButton(f"{number} — {theme}",
+                                                            callback_data=f"claim_{number}") #{claim['number']}")
+                        buttons.append(button)
+                    markup = types.InlineKeyboardMarkup(row_width=1)
+                    markup.add(*buttons)
+                    self.bot.send_message(call.message.chat.id,
+                                          "Выберите заявку для проверки её статуса:",
+                                          reply_markup=markup)
+                    jira_client.logout()
+                else:
+                    self.bot.send_message(call.message.chat.id, "Проблема с подключением к Jira, сбросьте регистрацию и обновите токен.")
+            else:
+                self.bot.send_message(call.message.chat.id, "Вы пока не подписаны ни на одно обновление.\nВыберите пункт «Все открытые заявки», затем — конкретную заявку и подпишитесь на её обновление.")
+                self.create_keyboard(call.message.chat.id, self.username)
+        else:
+            self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
+        supabase_client.logout()
+        self.supabase_client = None
 
     def poll_issue_status(self):
         supabase_client = self.initialize_supabase_client()
@@ -649,6 +705,9 @@ class TelegramBot:
                                 # Уведомляем подписчика
                                 print("self.field_chat_id = ", self.field_chat_id)
                                 self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
+                                if claim_link == self.done_status:
+                                    jira_client.delete_subscription(self.username, sub[self.field_claim_number])
+                                    self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
                         except Exception as e:
                             print(f"Ошибка опроса заявки {claim_number}: {e}")
                 jira_client.logout()
@@ -657,7 +716,7 @@ class TelegramBot:
         supabase_client.logout()
 
     def start_polling_scheduler(self):
-        schedule.every(999).minutes.do(self.poll_issue_status)
+        schedule.every(0.1).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
@@ -694,7 +753,7 @@ class TelegramBot:
 
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
-        self.create_keyboard(message.chat.id)
+        self.create_keyboard(message.chat.id, self.username)
 
     def run(self):
         self.bot.polling() # non_stop=True, timeout=30, long_polling_timeout=30)

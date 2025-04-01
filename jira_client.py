@@ -103,6 +103,15 @@ class JiraClient():
             claims.append({'number': number, 'theme': theme})
         return list(reversed(claims))
 
+    def get_theme_by_number(self, claim_number):
+        try:
+            issue = self.jira.issue(claim_number)
+            theme = issue.fields.summary
+            return theme
+        except JIRAError as e:
+            print(e)
+            return None
+
     def get_claim_link_by_number(self, claim_number):
         return self.domain.rstrip("/") + '/browse/' + claim_number
 

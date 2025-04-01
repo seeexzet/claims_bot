@@ -121,9 +121,9 @@ class SupabaseClient:
     def get_token_from_supabase(self, username: int):
         if self.check_user(username):
             try:
-                response = self.client.rpc(self.supabase_func_of_delete, {
-                    self.field_username: username,
-                    self.field_token: self.secret_code_for_token
+                response = self.client.rpc(self.supabase_func_of_read, {
+                    "p_name": username,
+                    "p_key": self.secret_code_for_token
                 }).execute()
 
                 if response.data:
@@ -174,13 +174,29 @@ class SupabaseClient:
             print(f"Ошибка сохранения подписки: {e}")
             return None
 
-    def get_subscriptions(self, username):
+    def delete_subscription(self, username, claim_number):
+        try:
+            user_id = self.get_user_id_by_username(username)
+            response = self.client.table(self.table_subscriptions) \
+                .delete(returning="representation") \
+                .eq(self.field_user_id, user_id) \
+                .eq(self.field_claim_number, claim_number) \
+                .execute()
+            return response
+        except Exception as e:
+            print(f"Ошибка удаления подписки: {e}")
+            return None
+
+    def get_subscriptions(self, username, fields="*"):
         user_id = self.get_user_id_by_username(username)
         try:
-            response = self.client.table(self.table_subscriptions).select("*").eq(self.field_user_id, user_id).execute()
+            response = self.client.table(self.table_subscriptions) \
+                .select(fields) \
+                .eq(self.field_user_id, user_id) \
+                .execute()
             return response.data
         except Exception as e:
-            print(f"Ошибка получения подписок__: {e}")
+            print(f"Ошибка получения подписок для пользователя {username}: {e}")
             return None
 
     def is_subscription(self, username, number):
@@ -266,18 +282,18 @@ if __name__ == "__main__":
     # # Записать подписку
     # response = supabase_client.save_subscription(1, 2222, "default_status").data
     # print("Результат записи новых данных в таблицу подписок: ", response)
-    #
+
     # # Получить подписки
-    # response = supabase_client.get_subscriptions()
+    # response = supabase_client.get_subscriptions(1679330)
     # print("Все подписки: ", response)
 
-    # Получить имя пользователя по id
-    response = supabase_client.get_username_by_user_id(27)
-    print("Имя пользователя по id: ", response)
-
-    # # Проверка метода существования записи в подписках
-    # print(supabase_client.is_subscription(username, claim_number))
-
-    # Получить всех пользователей
-    response = supabase_client.get_user_list()
-    print("Все пользователи: ", response)
+    # # Получить имя пользователя по id
+    # response = supabase_client.get_username_by_user_id(27)
+    # print("Имя пользователя по id: ", response)
+    #
+    # # # Проверка метода существования записи в подписках
+    # # print(supabase_client.is_subscription(username, claim_number))
+    #
+    # # Получить всех пользователей
+    # response = supabase_client.get_user_list()
+    # print("Все пользователи: ", response)
