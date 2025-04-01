@@ -45,6 +45,7 @@ class TelegramBot:
         self.todo_status = os.environ.get("GIRA_TODO_STATUS")
         self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
         self.done_status = os.environ.get("GIRA_TODO_DONE")
+        self.closed_status = os.environ.get("GIRA_CLOSED")
         self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
         self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
         self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
@@ -705,7 +706,7 @@ class TelegramBot:
                                 # Уведомляем подписчика
                                 print("self.field_chat_id = ", self.field_chat_id)
                                 self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
-                                if claim_link == self.done_status:
+                                if claim_link == self.done_status or claim_link == self.closed_status:
                                     jira_client.delete_subscription(self.username, sub[self.field_claim_number])
                                     self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
                         except Exception as e:
@@ -716,7 +717,7 @@ class TelegramBot:
         supabase_client.logout()
 
     def start_polling_scheduler(self):
-        schedule.every(0.1).minutes.do(self.poll_issue_status)
+        schedule.every(1).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
