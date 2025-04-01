@@ -89,17 +89,17 @@ class TelegramBot:
         markup = types.InlineKeyboardMarkup()
         # подключение к Supabase
         supabase_client = self.initialize_supabase_client()
-        if self.supabase_client.check_user_token(user_id):
-            button_reset_reg = types.InlineKeyboardButton('Сбросить регистрацию', callback_data='button_reset_reg')
-            markup.add(button_reset_reg)
+        if supabase_client.check_user_token(user_id):
             button_create_claim = types.InlineKeyboardButton('Оставить заявку', callback_data='button_create_claim')
             button_all_claims = types.InlineKeyboardButton('Все открытые заявки', callback_data='button_all_claims')
-            button_all_subs = types.InlineKeyboardButton('Все подписки на обновления', callback_data='button_all_subs')
+            button_all_subs = types.InlineKeyboardButton('Все подписки на обновления', callback_data=f"button_all_subs_{user_id}")
             button_check_claim = types.InlineKeyboardButton('Посмотреть статус заявки', callback_data='button_check_claim')
+            button_reset_reg = types.InlineKeyboardButton('Сбросить регистрацию', callback_data='button_reset_reg')
             markup.add(button_create_claim)
             markup.add(button_all_claims)
             markup.add(button_all_subs)
             markup.add(button_check_claim)
+            markup.add(button_reset_reg)
         else:
             button_reg = types.InlineKeyboardButton('Регистрация пользователя', callback_data='button_reg')
             markup.add(button_reg)
@@ -191,7 +191,6 @@ class TelegramBot:
             supabase_client.logout()
             self.supabase_client = None
 
-
         elif call.data == 'button_check_claim':
             # посмотреть статус конкретной заявки
             self.get_claim_input_number(call)
@@ -228,6 +227,9 @@ class TelegramBot:
         elif call.data.startswith('subscribe_'):
             number = call.data.split('_')[1]
             self.add_subscribe(call, number)
+
+        elif call.data.startswith('button_all_subs_'):
+            self.check_subscribe(call)
 
         elif call.data.startswith("upload_yes"):
             # Пользователь выбрал загрузку документа. Извлекаем issue_key из callback_data.
@@ -616,6 +618,9 @@ class TelegramBot:
         else:
             self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на обновления статуса заявки {number}")
         supabase_client.logout()
+
+    def check_subscribe(self, call):
+        pass
 
     def poll_issue_status(self):
         supabase_client = self.initialize_supabase_client()

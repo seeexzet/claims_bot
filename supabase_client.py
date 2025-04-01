@@ -12,7 +12,7 @@ class SupabaseClient:
         self.password = os.environ.get("USER_PASS")
         self.secret_code_for_token = os.environ.get("SUPABASE_SECRET_CODE_FOR_TOKEN")
         self.supabase_func_of_read = os.environ.get("SUPABASE_FUNCTION_OF_READ")
-        self.supabase_func_of_insert = os.environ.get("SUPABASE_FUNCTION_OF_INSERT")
+        self.supabase_func_of_insert_or_update = os.environ.get("SUPABASE_FUNCTION_OF_INSERT_OR_UPDATE")
         self.supabase_func_of_delete = os.environ.get("SUPABASE_FUNCTION_OF_DELETE")
 
         self.table_users = os.environ.get("TABLE_USERNAME")
@@ -22,6 +22,7 @@ class SupabaseClient:
         self.field_email = os.environ.get("FIELD_EMAIL")
         self.field_phone = os.environ.get("FIELD_PHONE")
         self.field_token = os.environ.get("FIELD_TOKEN")
+        self.field_is_deleted = os.environ.get("FIELD_IS_DELETED")
 
         self.table_subscriptions = os.environ.get("TABLE_SUBSCRIBE")
         self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
@@ -55,13 +56,19 @@ class SupabaseClient:
     def check_user_token(self, username: int) -> bool:
         try:
             response = self.client.table(self.table_users).select(self.field_token).eq(self.field_username, username).execute()
-            print('response.data ', response.data)
-            return response.data
+            if response.data and len(response.data) > 0:
+                token = response.data[0].get(self.field_token)
+                if token is not None and token != "":
+                    del token
+                    del response
+                    return True
+            return False
         except Exception as e:
+            print(f"Ошибка при проверке токена для пользователя {username}: {e}")
             return False
 
     def add_user(self, username: int, token: str): # registration_data: dict):
-        if not self.check_user(username):
+        if not self.check_user_token(username):
             data = {
                 self.field_username: username,
                 self.field_token: token
@@ -70,19 +77,22 @@ class SupabaseClient:
                 # self.field_email: registration_data['email'],
                 # self.field_phone: registration_data['phone']
             }
+            print('data = ', data)
             try:
                 # response = self.client.table(self.table_users).insert(data).execute()
-                response = self.client.rpc(self.supabase_func_of_insert, {
-                    self.field_username : int(username),
-                    "token": token,
-                    "enc_key": self.secret_code_for_token
+                response = self.client.rpc(self.supabase_func_of_insert_or_update, {
+                    "enc_key": self.secret_code_for_token,
+                    "p_token": token,
+                    "p_user_tg" : int(username)
                 }).execute()
+                print('response = ', response)
                 del token
                 return response.data # Ответ от Supabase.
             except Exception as e:
                 print(f"Error adding user '{username}': {str(e)}")
                 return None
         else:
+            print('Пришли в else')
             return None
 
     def get_user_id_by_username(self, username: int):
