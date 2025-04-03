@@ -12,6 +12,7 @@ class SupabaseClient:
         self.password = os.environ.get("USER_PASS")
         self.secret_code_for_token = os.environ.get("SUPABASE_SECRET_CODE_FOR_TOKEN")
         self.supabase_func_of_read = os.environ.get("SUPABASE_FUNCTION_OF_READ")
+        self.supabase_func_of_insert_or_update_without_email = os.environ.get("SUPABASE_FUNCTION_OF_INSERT_OR_UPDATE_WITHOUT_EMAIL")
         self.supabase_func_of_insert_or_update = os.environ.get("SUPABASE_FUNCTION_OF_INSERT_OR_UPDATE")
         self.supabase_func_of_delete = os.environ.get("SUPABASE_FUNCTION_OF_DELETE")
 
@@ -67,23 +68,20 @@ class SupabaseClient:
             print(f"Ошибка при проверке токена для пользователя {username}: {e}")
             return False
 
-    def add_user(self, username: int, token: str): # registration_data: dict):
+    def add_user(self, username: int, token: str, email: str): # registration_data: dict):
         if not self.check_user_token(username):
             data = {
                 self.field_username: username,
+                self.field_email: email,
                 self.field_token: token
-                # self.field_fio: registration_data['fio'],
-                # self.field_company: registration_data['company'],
-                # self.field_email: registration_data['email'],
-                # self.field_phone: registration_data['phone']
             }
             print('data = ', data)
             try:
-                # response = self.client.table(self.table_users).insert(data).execute()
                 response = self.client.rpc(self.supabase_func_of_insert_or_update, {
                     "enc_key": self.secret_code_for_token,
                     "p_token": token,
-                    "p_user_tg" : int(username)
+                    "p_email": email,
+                    "p_user_tg": int(username)
                 }).execute()
                 print('response = ', response)
                 del token
@@ -91,8 +89,27 @@ class SupabaseClient:
             except Exception as e:
                 print(f"Error adding user '{username}': {str(e)}")
                 return None
-        else:
-            print('Пришли в else')
+            return None
+
+    def add_user_without_email(self, username: int, token: str): # registration_data: dict):
+        if not self.check_user_token(username):
+            data = {
+                self.field_username: username,
+                self.field_token: token
+            }
+            print('data = ', data)
+            try:
+                response = self.client.rpc(self.supabase_func_of_insert_or_update_without_email, {
+                    "enc_key": self.secret_code_for_token,
+                    "p_token": token,
+                    "p_user_tg": int(username)
+                }).execute()
+                print('response = ', response)
+                del token
+                return response.data # Ответ от Supabase.
+            except Exception as e:
+                print(f"Error adding user '{username}': {str(e)}")
+                return None
             return None
 
     def get_user_id_by_username(self, username: int):
@@ -115,6 +132,18 @@ class SupabaseClient:
                 return data[0].get(self.field_username)
         except Exception as e:
                 print(f"Error searching user '{user_id}': {str(e)}")
+                return None
+        return None
+
+    def get_user_email(self, username: int):
+        if self.check_user(username):
+            try:
+                response = self.client.table(self.table_users).select(self.field_email).eq(self.field_username, username).execute()
+                data = response.data
+                if data and len(data) > 0:
+                    return data[0][self.field_email]
+            except Exception as e:
+                print(f"Error searching user email '{username}': {str(e)}")
                 return None
         return None
 
@@ -291,9 +320,12 @@ if __name__ == "__main__":
     # response = supabase_client.get_username_by_user_id(27)
     # print("Имя пользователя по id: ", response)
     #
-    # # # Проверка метода существования записи в подписках
+    # # Проверка метода существования записи в подписках
     # # print(supabase_client.is_subscription(username, claim_number))
     #
     # # Получить всех пользователей
     # response = supabase_client.get_user_list()
     # print("Все пользователи: ", response)
+    #
+    # # Получить email пользователя
+    # print("Email: ", supabase_client.get_user_email(222))

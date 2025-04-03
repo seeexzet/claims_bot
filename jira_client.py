@@ -3,31 +3,25 @@ from datetime import datetime
 import os
 from jira import JIRA
 from jira.exceptions import JIRAError
-
-# author 10042
-# status 10043
-# theme 10044
-# description 10045
+import requests
+from requests.auth import HTTPBasicAuth
+import json
 
 class JiraClient():
     def __init__(self, token):
         load_dotenv()
         self.domain = os.environ.get("GIRA_DOMAIN")
-        self.email = os.environ.get("GIRA_EMAIL")
-        # self.token = os.environ.get("GIRA_TOKEN")
         self.project_key = os.environ.get("GIRA_PROJECT_KEY")
         self.author_field = os.environ.get("GIRA_AUTHOR_FIELD")
         jira_options = {'server': self.domain}
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
         self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
-        token = None
 
     def create_claim(self, username, claim_data): # status):
         data = {
             'project': self.project_key,
             'summary': claim_data['theme'],
             'description': claim_data['text'],
-            #self.author_field: username,
             'priority': {"name": claim_data['priority']},
             'issuetype': {'name': claim_data['type']}
         }
@@ -50,7 +44,6 @@ class JiraClient():
 
     def check_claim_status(self, claim_number, username):
         try:
-            print('Проверим статус заявки')
             issue = self.jira.issue(claim_number)
             if issue.fields.reporter.raw['key'] == self.jira.myself()['key']:     #self.jira.myself().get("accountId"):
                 comments = issue.fields.comment.comments
@@ -112,11 +105,36 @@ class JiraClient():
             print(e)
             return None
 
-    def get_claim_link_by_number(self, claim_number):
+    def get_claim_status_by_number(self, claim_number):
         return self.domain.rstrip("/") + '/browse/' + claim_number
+
+    def get_claim_link_by_number(self, claim_number, token):
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
+        response = requests.get(self.domain.rstrip("/") + '/rest/servicedeskapi/servicedesk', headers=headers)
+        del token
+        print('response get_claim_link_by_number = ', response)
+        if response:
+            data = response.json()
+            portal_url = None
+            print('data[values]', data['values'])
+            for item in data['values']:
+                if item.get('projectKey') == self.project_key:
+                    print('Сейчас сформируем ссылку')
+                    portal_url = self.domain.rstrip("/") + '/servicedesk/customer/portal/' + item.get('_links', {}).get('portal').split('/')[-1] + '/' + str(claim_number)
+                    print('А вот и ссылка', portal_url)
+                    break
+            return portal_url
 
     def get_claim_by_number(self, claim_number):
         return self.jira.issue(claim_number)
+
+    def get_user_email(self):
+        user = self.jira.myself()
+        print("Email:", user.get('emailAddress'))
+        return user.get('emailAddress')
 
     def clear_token(self):
         if hasattr(self.jira, '_session'):
@@ -134,7 +152,7 @@ class JiraClient():
 if __name__ == "__main__":
     TOKEN = ''
     jira_client = JiraClient(TOKEN)
-    print(jira_client.get_claims_numbers())
+    # print(jira_client.get_claims_numbers())
 
     # Получить данные из таблицы до аутентификации
     # claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
@@ -145,4 +163,6 @@ if __name__ == "__main__":
     #
     # print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
     # print('---')
+
+    print('get_user_email() = ', jira_client.get_user_email())
 

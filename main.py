@@ -48,7 +48,7 @@ class TelegramBot:
         self.closed_status = os.environ.get("GIRA_CLOSED")
         self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
         self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
-        self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
+        # self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
         self.gira_project_key = os.environ.get("GIRA_PROJECT_KEY")
 
         self.register_handlers()
@@ -110,22 +110,22 @@ class TelegramBot:
 
     def priority_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
-        button_low = types.InlineKeyboardButton('Низкий', callback_data='button_low')
         button_middle = types.InlineKeyboardButton('Средний', callback_data='button_middle')
         button_high = types.InlineKeyboardButton('Высокий', callback_data='button_high')
-        markup.add(button_low)
+        button_critical = types.InlineKeyboardButton('Критический', callback_data='button_critical')
         markup.add(button_middle)
         markup.add(button_high)
+        markup.add(button_critical)
         self.bot.send_message(chat_id, "Выберите приоритет заявки:", reply_markup=markup)
 
     def type_keyboard(self, chat_id):
         markup = types.InlineKeyboardMarkup()
         button_type1 = types.InlineKeyboardButton(self.typetask_field_1, callback_data='button_type1')
         button_type2 = types.InlineKeyboardButton(self.typetask_field_2, callback_data='button_type2')
-        button_type3 = types.InlineKeyboardButton(self.typetask_field_3, callback_data='button_type3')
+        # button_type3 = types.InlineKeyboardButton(self.typetask_field_3, callback_data='button_type3')
         markup.add(button_type1)
         markup.add(button_type2)
-        markup.add(button_type3)
+        # markup.add(button_type3)
         self.bot.send_message(chat_id, "Выберите тип заявки:", reply_markup=markup)
 
     def attachenent_keyboard(self, chat_id):
@@ -196,17 +196,17 @@ class TelegramBot:
             # посмотреть статус конкретной заявки
             self.get_claim_input_number(call)
 
-        elif call.data == 'button_low':
-            # выбран низкий статус заявки
-            self.handle_priority_selection(call, self.low_priority, "низкий")
-
         elif call.data == 'button_middle':
-            # выбран средний уровень обработки заявок
-            self.handle_priority_selection(call, self.middle_priority, "средний")
+            # выбран низкий статус заявки
+            self.handle_priority_selection(call, self.low_priority, "средний")
 
         elif call.data == 'button_high':
+            # выбран средний уровень обработки заявок
+            self.handle_priority_selection(call, self.middle_priority, "высокий")
+
+        elif call.data == 'button_critical':
             # выбран высокий уровень обработки заявок
-            self.handle_priority_selection(call, self.high_priority, "высокий")
+            self.handle_priority_selection(call, self.high_priority, "критический")
 
         elif call.data == 'button_type1':
             self.process_claim_type(call, self.typetask_field_1)
@@ -214,8 +214,8 @@ class TelegramBot:
         elif call.data == 'button_type2':
             self.process_claim_type(call, self.typetask_field_2)
 
-        elif call.data == 'button_type3':
-            self.process_claim_type(call, self.typetask_field_3)
+        # elif call.data == 'button_type3':
+        #     self.process_claim_type(call, self.typetask_field_3)
 
         elif call.data == 'main_menu_button':
             self.create_keyboard(call.message.chat.id, self.username)
@@ -280,18 +280,20 @@ class TelegramBot:
                 self.create_keyboard(message.chat.id, self.username)
 
     def handle_priority_selection(self, call, priority_level, priority_name):
-            self.bot.send_message(call.message.chat.id, f"Выбран {priority_name} уровень статуса заявки")
+            self.bot.send_message(call.message.chat.id, f"Выбран уровень статуса заявки: <b>{priority_name}</b>", parse_mode='HTML')
             print('priority_level=', priority_level)
             self.claim_data = {'priority': priority_level}
-            self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                               reply_markup=None)
+            # self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+            #                                    reply_markup=None)
+            self.bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
             self.type_keyboard(call.message.chat.id)
 
     def process_claim_type(self, call, type: str):
         self.claim_data['type'] = type
-        self.bot.send_message(call.message.chat.id, f"Выбран тип заявки {type}")
-        self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                           reply_markup=None)
+        self.bot.send_message(call.message.chat.id, f"Выбран тип заявки: <b>{type}</b>", parse_mode='HTML')
+        # self.bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+        #                                    reply_markup=None)
+        self.bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
         msg = self.bot.send_message(call.message.chat.id, "Введите тему заявки:")
         self.bot.register_next_step_handler(msg, self.process_claim_theme)
 
@@ -314,7 +316,7 @@ class TelegramBot:
             self.upload_claim(message)
         else:
             self.bot.send_message(message.chat.id, "Документ не найден.")
-            # заново клавиатура
+            self.attachenent_keyboard(message.chat.id)
 
     def handle_photo(self, message):
         if message.photo:
@@ -340,27 +342,44 @@ class TelegramBot:
         if not supabase_client.check_user_token(self.username):
             self.bot.send_message(call.message.chat.id, "Вы выбрали регистрацию пользователя")
             # функции для регистрации
-            self.bot.send_message(
-                call.message.chat.id,
-                (
-                    "Нужно завести токен. \n"
-                    "1. Пройдите по ссылке: https://support24.team/secure/ViewProfile.jspa\n"
-                    "Нажмите справа вверху Create token (Создать токен)\n"
-                    "2. Введите название токена в поле Token name и нажмите внизу Create (Создать)\n"
-                    "3. Скопируйте в открывшейся странице Token (длинную последовательность символов) и вставьте сюда"
+            user_email = None
+            try:
+                user_email = supabase_client.get_user_email(self.username)
+            except:
+                print('Ошибка')
+            if not self.is_email(user_email):
+                self.bot.send_message(
+                    call.message.chat.id,
+                    (
+                        "Введите email"
+                    )
                 )
-            )
-            self.bot.register_next_step_handler(call.message, self.process_registration_token)
+                self.bot.register_next_step_handler(call.message, self.process_registration_email)
+            else:
+                self.bot.send_message(
+                    call.message.chat.id,
+                    (
+                        "Нужно завести токен. \n"
+                        "1. Пройдите по ссылке: https://support24.team/secure/ViewProfile.jspa\n"
+                        "Нажмите справа вверху Create token (Создать токен)\n"
+                        "2. Введите название токена в поле Token name и нажмите внизу Create (Создать)\n"
+                        "3. Скопируйте в открывшейся странице Token (длинную последовательность символов) и вставьте сюда"
+                    )
+                )
+                self.bot.register_next_step_handler(call.message, self.process_registration_token)
         else:
             self.bot.send_message(call.message.chat.id, "Вы уже зарегистрированы")
         supabase_client.logout()
         self.supabase_client = None
 
-    def process_registration_token(self, message):
+    def process_registration_token(self, message, email=None):
         supabase_client = self.initialize_supabase_client()
         if not self.if_start(message) and not self.if_help(message):
             if len(message.text) > 16:
-                response = supabase_client.add_user(self.username, "".join(message.text.split()))
+                if email:
+                    response = supabase_client.add_user(self.username, "".join(message.text.split()), email)
+                else:
+                    response = supabase_client.add_user_without_email(self.username, "".join(message.text.split()))
                 if response:
                     self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
                 else:
@@ -392,19 +411,28 @@ class TelegramBot:
     #         # Запрос email
     #         self.bot.send_message(message.chat.id, "Введите ваш email:")
     #         self.bot.register_next_step_handler(message, self.process_registration_email)
-    #
-    # def process_registration_email(self, message):
-    #     if not self.if_start(message) and not self.if_help(message):
-    #         # Сохраняем email
-    #         if self.is_email(message.text):
-    #             self.reg_data[username]['email'] = message.text
-    #             # Запрос номера телефона
-    #             self.bot.send_message(message.chat.id, "Введите ваш телефон:")
-    #             self.bot.register_next_step_handler(message, self.process_registration_phone)
-    #         else:
-    #             self.bot.send_message(message.chat.id, "Введён неправильный email, введите заново:")
-    #             self.bot.register_next_step_handler(message, self.process_registration_email)
-    #
+
+    def process_registration_email(self, message):
+        if not self.if_start(message) and not self.if_help(message):
+            # Сохраняем email
+            if self.is_email(message.text):
+                email = message.text
+                # Запрос номера телефона
+                self.bot.send_message(
+                    message.chat.id,
+                    (
+                        "Нужно завести токен. \n"
+                        "1. Пройдите по ссылке: https://support24.team/secure/ViewProfile.jspa\n"
+                        "Нажмите справа вверху Create token (Создать токен)\n"
+                        "2. Введите название токена в поле Token name и нажмите внизу Create (Создать)\n"
+                        "3. Скопируйте в открывшейся странице Token (длинную последовательность символов) и вставьте сюда"
+                    )
+                )
+                self.bot.register_next_step_handler(message, self.process_registration_token, email)
+            else:
+                self.bot.send_message(message.chat.id, "Введён неправильный email, введите заново:")
+                self.bot.register_next_step_handler(message, self.process_registration_email)
+
     # def process_registration_phone(self, message):
     #     if not self.if_start(message) and not self.if_help(message):
     #         clear_phone = self.is_phone(message.text)
@@ -435,11 +463,13 @@ class TelegramBot:
     #     elif tel.startswith('9') and len(tel) == 10 and tel.isdigit():
     #         return int('8'+tel)
     #     else:
-    #         return None
-    #
-    # def is_email(self, text: str) -> bool:
-    #     pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z.]+$"
-    #     return re.match(pattern, text) is not None
+    #        return None
+
+    def is_email(self, text: str) -> bool:
+        if not text:
+            return False
+        pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z.]+$"
+        return re.match(pattern, text) is not None
 
     def process_claim_theme(self, message):
         if not self.if_start(message) and not self.if_help(message):
@@ -460,48 +490,48 @@ class TelegramBot:
             else:
                 self.bot.send_message(message.chat.id, "Описание заявки введено неверно, повторите:")
                 self.bot.register_next_step_handler(message, self.process_claim_text)
-                self.create_keyboard(message.chat.id, self.username)
 
     def upload_claim(self, message):
         #получение токена для Jira из Supabase
         supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
-        supabase_client.logout()
         self.supabase_client = None
         if jira_token:
             jira_client = JiraClient(jira_token)
-            del jira_token
             # добавление заявки в Jira
             response_claim_jira = jira_client.create_claim(self.username, self.claim_data)
+            jira_claim_number = response_claim_jira.key
+            email = supabase_client.get_user_email(self.username)
+            claim_link = jira_client.get_claim_link_by_number(jira_claim_number, email, jira_token)
+            del jira_token
             if response_claim_jira:
-                jira_claim_number = response_claim_jira.key # int(response_claim_jira.key.split('-')[1])
-                # self.bot.send_message(message.chat.id, f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
-                #response_claim_supabase = self.supabase_client.create_claim(self.username, claim_data, jira_claim_number)
-                #if response_claim_supabase:
-                #     self.bot.send_message(message.chat.id,
-                #         f"<b>Ваша заявка принята</b>. \n\nНомер заявки в Supabase: <b>{response_claim_supabase[0]['id']}</b> \n"
-                #         f"Номер заявки в Jira: <b>{response_claim_jira.key.split('-')[1]}</b>, ссылка: \n{response_claim_jira.permalink()}", parse_mode='HTML')
-                # else:
-                #     self.bot.send_message(message.chat.id, "Не удалось добавить заявку в Supabase\n"
-                #         f"Номер заявки в Jira: {response_claim_jira.key}, ссылка: \n{response_claim_jira.permalink()}")
                 del self.claim_data
                 if self.attachment:
                     # загрузить фото или видео
                     result_add_attachment = jira_client.add_attachment_to_claim(jira_claim_number, self.attachment, self.filename)
                     if result_add_attachment:
                         self.bot.send_message(message.chat.id,
-                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{response_claim_jira.permalink()}",
+                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>",
+                                              parse_mode='HTML')
+                    else:
+                        self.bot.send_message(message.chat.id,
+                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>",
                                               parse_mode='HTML')
                 else:
                     self.bot.send_message(message.chat.id,
-                                          f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{response_claim_jira.permalink()}",
+                                          f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{claim_link}",
                                           parse_mode='HTML')
+                if claim_link:
+                    self.bot.send_message(message.chat.id, f"Ссылка на заявку: \n{claim_link}")
+                else:
+                    self.bot.send_message(message.chat.id, f"Ссылку невозможно прислать, поскольку email не совпадает с тем, что указан в Jira.")
                 jira_client.logout()
             else:
                 self.bot.send_message(message.chat.id, "Не удалось создать заявку")
                 del self.claim_data
         else:
             self.bot.send_message(message.chat.id, f"Пользователь {self.username} не зарегистрирован в Supabase")
+        supabase_client.logout()
 
     def get_claim_input_number(self, call):
         self.bot.send_message(call.message.chat.id, "Введите номер заявки:")
@@ -684,7 +714,6 @@ class TelegramBot:
         user_list = supabase_client.get_user_list()
         for user in user_list:
             subscriptions = supabase_client.get_subscriptions(user)
-            print(subscriptions)
             jira_token = supabase_client.get_token_from_supabase(user)
             if jira_token:
                 jira_client = JiraClient(jira_token)
@@ -698,7 +727,7 @@ class TelegramBot:
                         try:
                             current_status = jira_client.check_claim_status(claim_number, user)['status']
                             print('current_status=', current_status, ' last=', last_status)
-                            claim_link = jira_client.get_claim_link_by_number(claim_number)
+                            claim_link = jira_client.get_claim_status_by_number(claim_number)
                             if current_status != last_status:
                                 # Обновляем статус в Supabase
                                 print('Статусы отличаются')
@@ -717,7 +746,7 @@ class TelegramBot:
         supabase_client.logout()
 
     def start_polling_scheduler(self):
-        schedule.every(1).minutes.do(self.poll_issue_status)
+        schedule.every(6).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
