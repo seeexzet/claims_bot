@@ -5,39 +5,105 @@ from jira import JIRA
 from jira.exceptions import JIRAError
 import requests
 from requests.auth import HTTPBasicAuth
-import json
 
 class JiraClient():
     def __init__(self, token):
         load_dotenv()
+        self.headers = {
+            "X-Atlassian-Token": "no-check",
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
         self.domain = os.environ.get("GIRA_DOMAIN")
         self.project_key = os.environ.get("GIRA_PROJECT_KEY")
         self.author_field = os.environ.get("GIRA_AUTHOR_FIELD")
+        self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
+        self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
         jira_options = {'server': self.domain}
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
         self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
 
     def create_claim(self, username, claim_data): # status):
-        data = {
-            'project': self.project_key,
-            'summary': claim_data['theme'],
-            'description': claim_data['text'],
-            'priority': {"name": claim_data['priority']},
-            'issuetype': {'name': claim_data['type']}
-        }
+        url = f"{self.domain}rest/servicedeskapi/request"
+        # получение serviceDeskId
+        serviceDeskId = self.get_servicedesk_number()
+        if claim_data.get('text') and claim_data['type'] == self.typetask_field_1:
+            data = {
+            # #     'project': self.project_key,
+            # #     'summary': claim_data['theme'],
+            # #     'description': claim_data['text'],
+            # #     'priority': {"name": claim_data['priority']},
+            # #     'issuetype': {'name': claim_data['type']}
+            # # }
+            'serviceDeskId': serviceDeskId, #self.service_desk_id,  # идентификатор сервис-деска
+            'requestTypeId': self.get_request_type_id(claim_data['type'], serviceDeskId), #claim_data.get('request_type_id'),  # ID выбранного типа запроса
+            'requestFieldValues': {
+                'summary': claim_data['theme'],
+                'description': claim_data['text'],
+                'priority': {"name": claim_data['priority']}
+                }
+            }
+        elif not claim_data.get('text') and claim_data['type'] == self.typetask_field_2:
+            data = {
+            'serviceDeskId': serviceDeskId, #self.service_desk_id,  # идентификатор сервис-деска
+            'requestTypeId': self.get_request_type_id(claim_data['type'], serviceDeskId), #claim_data.get('request_type_id'),  # ID выбранного типа запроса
+            'requestFieldValues': {
+                'summary': claim_data['theme'],
+                'priority': {"name": claim_data['priority']}
+                }
+            }
+
         try:
-            new_issue = self.jira.create_issue(data)
-            print(f"Create claim: {new_issue.key}, link: \n{new_issue.permalink()}")
+            response = requests.post(url, json=data, headers=self.headers)
+            response.raise_for_status()
+            new_issue = response.json()
+            print(new_issue)
+
+            # new_issue = self.jira.create_issue(data)
+            # print(f"Create claim: {new_issue.key}, link: \n{new_issue.permalink()}")
+            #print(f"Create claim: {new_issue['key']}, link: \n{new_issue['permalink']}")
             return new_issue
         except Exception as e:
             print(f"Error creating claim for user '{username}': {str(e)}")
             return None
 
+    def get_request_type_id(self, request_type_name, serviceDeskId):
+        url = f"{self.domain}rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype"
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        request_types = response.json()
+        for rt in request_types.get("values", []):
+            if rt.get("name") == request_type_name:
+                print(rt.get("id"))
+                return rt.get("id")
+        return None
+
     def add_attachment_to_claim(self, claim_number: int, downloaded_file, filename):
         try:
-            # issue = self.jira.issue(self.project_key + '-' + str(claim_number))
-            response = self.jira.add_attachment(issue=claim_number, attachment=downloaded_file, filename=filename)
-            return response
+            files = {
+                "file": ("photo.jpg", downloaded_file, "image/jpeg")
+            }
+            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
+            url = f"{self.domain}rest/api/2/issue/{issue}/attachments"
+            response = requests.post(url, headers=self.headers, files=files)
+            response.raise_for_status()
+        #     return response.json()
+        #     response = self.jira.add_attachment(issue=issue, attachment=downloaded_file, filename=filename)
+        #     return response
+            attachment = response.json()[0]
+            print('attachment = ', attachment)
+
+            comment_text = f"Вложенная фотография:\n\n!{attachment['filename']}!"
+            print('comment_text = ', comment_text)
+
+            comment_url = f"{self.domain}rest/api/2/issue/{issue}/comment"
+            comment_data = {
+                "body": comment_text
+            }
+            comment_response = requests.post(comment_url, json=comment_data, headers=self.headers)
+            print('comment_response = ', comment_response)
+            comment_response.raise_for_status()
+            return comment_response.json()
         except Exception as e:
             print(f"Ошибка при загрузке файла в Jira: {e}")
             return None
@@ -108,25 +174,22 @@ class JiraClient():
     def get_claim_status_by_number(self, claim_number):
         return self.domain.rstrip("/") + '/browse/' + claim_number
 
-    def get_claim_link_by_number(self, claim_number, token):
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json"
-        }
-        response = requests.get(self.domain.rstrip("/") + '/rest/servicedeskapi/servicedesk', headers=headers)
-        del token
-        print('response get_claim_link_by_number = ', response)
+    def get_servicedesk_number(self):
+        response = requests.get(self.domain.rstrip("/") + '/rest/servicedeskapi/servicedesk', headers=self.headers)
         if response:
             data = response.json()
-            portal_url = None
-            print('data[values]', data['values'])
             for item in data['values']:
                 if item.get('projectKey') == self.project_key:
-                    print('Сейчас сформируем ссылку')
-                    portal_url = self.domain.rstrip("/") + '/servicedesk/customer/portal/' + item.get('_links', {}).get('portal').split('/')[-1] + '/' + str(claim_number)
-                    print('А вот и ссылка', portal_url)
-                    break
-            return portal_url
+                    return item.get('_links').get('portal').split('/')[-1]
+            return None
+
+    def get_claim_link_by_number(self, claim_number):
+        servivedesk_number = self.get_servicedesk_number()
+        print(servivedesk_number)
+        if servivedesk_number:
+            return self.domain.rstrip("/") + '/servicedesk/customer/portal/' + servivedesk_number + '/' + self.project_key + '-' + str(claim_number)
+        else:
+            return None
 
     def get_claim_by_number(self, claim_number):
         return self.jira.issue(claim_number)
@@ -141,6 +204,7 @@ class JiraClient():
             self.jira._session.headers.pop('Authorization', None)
 
     def logout(self):
+        del self.headers
         self.clear_token()
         if hasattr(self.jira, '_session'):
             self.jira._session.close()
@@ -148,21 +212,37 @@ class JiraClient():
     def readable_time(self, original_time):
         return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%d.%m.%Y %H:%M:%S")
 
+    # def get_list_of_requests_types(self, token):
+    #     url = f"{self.domain}rest/servicedeskapi/servicedesk/3/requesttype"
+    #
+    #     headers = {
+    #         "Authorization": f"Bearer {token}",
+    #         "Accept": "application/json"
+    #     }
+    #
+    #     response = requests.get(url, headers=headers)
+    #     response.raise_for_status()
+    #     print(response)
+
 
 if __name__ == "__main__":
-    TOKEN = ''
+    TOKEN = 'NDAwMTc5OTQzMTUwOuG2zqv1fQvrYqbjc9CBD4du+rgW'
     jira_client = JiraClient(TOKEN)
     # print(jira_client.get_claims_numbers())
 
-    # Получить данные из таблицы до аутентификации
-    # claim_data = {'theme': 'theme', 'text': 'description', 'priority': 'High'}
-    # response = jira_client.create_claim('user1', claim_data)
-    # print("Загружены данные: ", response)
+    # # Получить данные из таблицы до аутентификации
+    claim_data = {'theme': 'theme', 'type': 'Incident', 'text': 'description', 'priority': 'P1 - High'}
+    response = jira_client.create_claim('user1', claim_data)
+    print("Загружены данные: ", response)
 
     # print(jira_client.check_claim_status(30, "Simm20"))
     #
     # print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
     # print('---')
 
-    print('get_user_email() = ', jira_client.get_user_email())
+    # print('get_user_email() = ', jira_client.get_user_email())
+    # jira_client.get_list_of_requests_types(TOKEN)
+
+    # print(jira_client.get_claim_link_by_number(1775))
+
 

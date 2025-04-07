@@ -475,8 +475,11 @@ class TelegramBot:
         if not self.if_start(message) and not self.if_help(message):
             if len(message.text) > 0:
                 self.claim_data['theme'] = message.text
-                self.bot.send_message(message.chat.id, "Введите описание заявки:")
-                self.bot.register_next_step_handler(message, self.process_claim_text)
+                if self.claim_data['type'] == self.typetask_field_1:
+                    self.bot.send_message(message.chat.id, "Введите описание заявки:")
+                    self.bot.register_next_step_handler(message, self.process_claim_text)
+                elif self.claim_data['type'] == self.typetask_field_2:
+                    self.attachenent_keyboard(message.chat.id)
             else:
                 self.bot.send_message(message.chat.id, "Тема введена неправильно, введите заново:")
                 self.bot.register_next_step_handler(message, self.process_claim_theme)
@@ -500,9 +503,9 @@ class TelegramBot:
             jira_client = JiraClient(jira_token)
             # добавление заявки в Jira
             response_claim_jira = jira_client.create_claim(self.username, self.claim_data)
-            jira_claim_number = response_claim_jira.key
+            jira_claim_number = response_claim_jira['issueKey'].split('-')[-1]
             email = supabase_client.get_user_email(self.username)
-            claim_link = jira_client.get_claim_link_by_number(jira_claim_number, email, jira_token)
+            claim_link = jira_client.get_claim_link_by_number(jira_claim_number)
             del jira_token
             if response_claim_jira:
                 del self.claim_data
@@ -511,20 +514,24 @@ class TelegramBot:
                     result_add_attachment = jira_client.add_attachment_to_claim(jira_claim_number, self.attachment, self.filename)
                     if result_add_attachment:
                         self.bot.send_message(message.chat.id,
-                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>",
+                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
                                               parse_mode='HTML')
                     else:
                         self.bot.send_message(message.chat.id,
-                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>",
+                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
                                               parse_mode='HTML')
                 else:
                     self.bot.send_message(message.chat.id,
                                           f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{claim_link}",
                                           parse_mode='HTML')
-                if claim_link:
-                    self.bot.send_message(message.chat.id, f"Ссылка на заявку: \n{claim_link}")
-                else:
-                    self.bot.send_message(message.chat.id, f"Ссылку невозможно прислать, поскольку email не совпадает с тем, что указан в Jira.")
+                markup = types.InlineKeyboardMarkup()
+                subscribe_button = types.InlineKeyboardButton(
+                    text="Подписаться на обновления по заявке", callback_data=f"subscribe_{jira_claim_number}")
+                markup.add(subscribe_button)
+                # if claim_link:
+                #     self.bot.send_message(message.chat.id, f"Ссылка на заявку: \n{claim_link}")
+                # else:
+                #     self.bot.send_message(message.chat.id, f"Ссылку невозможно прислать, поскольку email не совпадает с тем, что указан в Jira.")
                 jira_client.logout()
             else:
                 self.bot.send_message(message.chat.id, "Не удалось создать заявку")
