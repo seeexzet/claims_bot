@@ -510,7 +510,7 @@ class TelegramBot:
             if response_claim_jira:
                 del self.claim_data
                 if self.attachment:
-                    # загрузить фото или видео
+                    # загрузить фото или документ
                     result_add_attachment = jira_client.add_attachment_to_claim(jira_claim_number, self.attachment, self.filename)
                     if result_add_attachment:
                         self.bot.send_message(message.chat.id,

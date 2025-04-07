@@ -226,7 +226,7 @@ class JiraClient():
 
 
 if __name__ == "__main__":
-    TOKEN = 'NDAwMTc5OTQzMTUwOuG2zqv1fQvrYqbjc9CBD4du+rgW'
+    TOKEN = ''
     jira_client = JiraClient(TOKEN)
     # print(jira_client.get_claims_numbers())
 
