@@ -4,6 +4,7 @@ import os
 from jira import JIRA
 from jira.exceptions import JIRAError
 import requests
+import mimetypes
 from requests.auth import HTTPBasicAuth
 
 class JiraClient():
@@ -80,11 +81,46 @@ class JiraClient():
 
     def add_attachment_to_claim(self, claim_number: int, downloaded_file, filename):
         try:
+            issue_key = self.jira.issue(self.project_key + '-' + str(claim_number))
+
+            attach_url = f"{self.domain}rest/api/2/issue/{issue_key}/attachments"
+
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = "application/octet-stream"
+
+            files = {
+                "file": (filename, downloaded_file, mime_type)
+            }
+
+            attach_response = requests.post(attach_url, headers=self.headers, files=files)
+            attach_response.raise_for_status()
+            attachments = attach_response.json()
+            if not attachments:
+                print("Вложение не загружено")
+                return None
+            # Берём первое вложение
+            attachment = attachments[0]
+
+            comment_text = f"[Вложение {attachment['filename']}|{attachment['content']}]"
+
+            comment_url = f"{self.domain}rest/api/2/issue/{issue_key}/comment"
+            comment_data = {"body": comment_text}
+
+            comment_response = requests.post(comment_url, json=comment_data, headers=self.headers)
+            comment_response.raise_for_status()
+            return comment_response.json()
+        except Exception as e:
+            print(f"Ошибка при добавлении комментария с документом: {e}")
+            return None
+
+    def add_photo_to_claim(self, claim_number: int, downloaded_file, filename):
+        try:
             files = {
                 "file": ("photo.jpg", downloaded_file, "image/jpeg")
             }
-            issue = self.jira.issue(self.project_key + '-' + str(claim_number))
-            url = f"{self.domain}rest/api/2/issue/{issue}/attachments"
+            issue_key = self.jira.issue(self.project_key + '-' + str(claim_number))
+            url = f"{self.domain}rest/api/2/issue/{issue_key}/attachments"
             response = requests.post(url, headers=self.headers, files=files)
             response.raise_for_status()
         #     return response.json()
@@ -96,7 +132,7 @@ class JiraClient():
             comment_text = f"Вложенная фотография:\n\n!{attachment['filename']}!"
             print('comment_text = ', comment_text)
 
-            comment_url = f"{self.domain}rest/api/2/issue/{issue}/comment"
+            comment_url = f"{self.domain}rest/api/2/issue/{issue_key}/comment"
             comment_data = {
                 "body": comment_text
             }

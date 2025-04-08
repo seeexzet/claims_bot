@@ -55,6 +55,7 @@ class TelegramBot:
         self.start_polling_scheduler()
         self.reg_data = {}
         self.attachment = None
+        self.photo = None
 
     def register_handlers(self):
         # Обработчики команд
@@ -329,7 +330,7 @@ class TelegramBot:
             file_data.name = "photo.jpg"  # Задаем имя файла вручную
             file_data.seek(0)
 
-            self.attachment=file_data
+            self.photo=file_data
             self.filename=file_data.name
             self.bot.send_message(message.chat.id, f"Фотография успешно прикреплена к заявке.")
             self.upload_claim(message)
@@ -508,26 +509,36 @@ class TelegramBot:
             claim_link = jira_client.get_claim_link_by_number(jira_claim_number)
             del jira_token
             if response_claim_jira:
-                del self.claim_data
-                if self.attachment:
-                    # загрузить фото или документ
-                    result_add_attachment = jira_client.add_attachment_to_claim(jira_claim_number, self.attachment, self.filename)
-                    if result_add_attachment:
-                        self.bot.send_message(message.chat.id,
-                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
-                                              parse_mode='HTML')
-                    else:
-                        self.bot.send_message(message.chat.id,
-                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
-                                              parse_mode='HTML')
-                else:
-                    self.bot.send_message(message.chat.id,
-                                          f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{claim_link}",
-                                          parse_mode='HTML')
                 markup = types.InlineKeyboardMarkup()
                 subscribe_button = types.InlineKeyboardButton(
                     text="Подписаться на обновления по заявке", callback_data=f"subscribe_{jira_claim_number}")
                 markup.add(subscribe_button)
+                del self.claim_data
+                if self.photo:
+                    # загрузить фото или документ
+                    result_add_attachment = jira_client.add_photo_to_claim(jira_claim_number, self.photo, self.filename)
+                    if result_add_attachment:
+                        self.bot.send_message(message.chat.id,
+                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
+                                              parse_mode='HTML', reply_markup=markup)
+                    else:
+                        self.bot.send_message(message.chat.id,
+                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
+                                              parse_mode='HTML', reply_markup=markup)
+                elif self.attachment:
+                    result_add_attachment = jira_client.add_attachment_to_claim(jira_claim_number, self.attachment, self.filename)
+                    if result_add_attachment:
+                        self.bot.send_message(message.chat.id,
+                                              f"Заявка успешно создана, вложение успешно добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
+                                              parse_mode='HTML', reply_markup=markup)
+                    else:
+                        self.bot.send_message(message.chat.id,
+                                              f"Заявка успешно создана, но вложение не добавлено, номер в Jira: <b>{jira_claim_number}</b>, ссылка: \n{claim_link}",
+                                              parse_mode='HTML', reply_markup=markup)
+                else:
+                    self.bot.send_message(message.chat.id,
+                                          f"Заявка успешно создана, номер в Jira: <b>{jira_claim_number}</b>, Ссылка: \n{claim_link}",
+                                          parse_mode='HTML', reply_markup=markup)
                 # if claim_link:
                 #     self.bot.send_message(message.chat.id, f"Ссылка на заявку: \n{claim_link}")
                 # else:
