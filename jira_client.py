@@ -170,7 +170,7 @@ class JiraClient():
                     } if last_comment else None
                 }
             else:
-                # print('Не ваша заявка')
+                print('Не ваша заявка')
                 return None
         except JIRAError as e:
             return None
@@ -207,8 +207,8 @@ class JiraClient():
             print(e)
             return None
 
-    def get_claim_status_by_number(self, claim_number):
-        return self.domain.rstrip("/") + '/browse/' + claim_number
+    # def get_claim_status_by_number(self, claim_number):
+    #     return self.domain.rstrip("/") + '/browse/' + claim_number
 
     def get_servicedesk_number(self):
         response = requests.get(self.domain.rstrip("/") + '/rest/servicedeskapi/servicedesk', headers=self.headers)
@@ -221,7 +221,6 @@ class JiraClient():
 
     def get_claim_link_by_number(self, claim_number):
         servivedesk_number = self.get_servicedesk_number()
-        print(servivedesk_number)
         if servivedesk_number:
             return self.domain.rstrip("/") + '/servicedesk/customer/portal/' + servivedesk_number + '/' + self.project_key + '-' + str(claim_number)
         else:

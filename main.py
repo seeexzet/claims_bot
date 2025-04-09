@@ -7,6 +7,7 @@ import os
 import re
 import time
 import requests
+import asyncio
 from io import BytesIO
 from dotenv import load_dotenv
 from supabase_client import SupabaseClient
@@ -743,7 +744,7 @@ class TelegramBot:
         i = number
         k = 0
         while (i < len(self.list_of_claims)) and (k < self.buttons_per_page):
-            button = types.InlineKeyboardButton(f"{self.list_of_claims[i]['number']} — {self.list_of_claims[i]['theme']}",  callback_data=f"claim_{i}")
+            button = types.InlineKeyboardButton(f"{self.list_of_claims[i]['number']} — {self.list_of_claims[i]['theme']}",  callback_data=f"claim_{self.list_of_claims[i]['number']}")
             buttons.append(button)
             i += 1
             k += 1
@@ -764,43 +765,46 @@ class TelegramBot:
         self.bot.send_message(call.message.chat.id, "Выберите заявку для проверки её статуса:", reply_markup=markup)
 
     def poll_issue_status(self):
-        supabase_client = self.initialize_supabase_client()
-        user_list = supabase_client.get_user_list()
-        for user in user_list:
-            subscriptions = supabase_client.get_subscriptions(user)
-            jira_token = supabase_client.get_token_from_supabase(user)
-            if jira_token:
-                jira_client = JiraClient(jira_token)
-                del jira_token
-                if subscriptions:
-                    for sub in subscriptions:
-                        claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
-                        # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
-                        last_status = sub.get(self.field_claim_status, "")
-                        print('Проверка статуса ', user, ' ', claim_number)
-                        try:
-                            current_status = jira_client.check_claim_status(claim_number, user)['status']
-                            print('current_status=', current_status, ' last=', last_status)
-                            claim_link = jira_client.get_claim_status_by_number(claim_number)
-                            if current_status != last_status:
-                                # Обновляем статус в Supabase
-                                print('Статусы отличаются')
-                                supabase_client.update_subscription_status(user, claim_number, current_status)
-                                # Уведомляем подписчика
-                                print("self.field_chat_id = ", self.field_chat_id)
-                                self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
-                                if claim_link == self.done_status or claim_link == self.closed_status:
-                                    jira_client.delete_subscription(self.username, sub[self.field_claim_number])
-                                    self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
-                        except Exception as e:
-                            print(f"Ошибка опроса заявки {claim_number}: {e}")
-                jira_client.logout()
-            # else:
-            #     self.bot.send_message(user, f"У вас нет подписок")
-        supabase_client.logout()
+        try:
+            supabase_client = self.initialize_supabase_client()
+            user_list = supabase_client.get_user_list()
+            for user in user_list:
+                subscriptions = supabase_client.get_subscriptions(user)
+                jira_token = supabase_client.get_token_from_supabase(user)
+                if jira_token:
+                    jira_client = JiraClient(jira_token)
+                    del jira_token
+                    if subscriptions:
+                        for sub in subscriptions:
+                            claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
+                            # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
+                            last_status = sub.get(self.field_claim_status, "")
+                            print('Проверка статуса ', user, ' ', claim_number)
+                            try:
+                                current_status = jira_client.check_claim_status(claim_number, user)['status']
+                                print('current_status=', current_status, ' last=', last_status)
+                                claim_link = jira_client.get_claim_link_by_number(sub[self.field_claim_number])
+                                if current_status != last_status:
+                                    # Обновляем статус в Supabase
+                                    print('Статусы отличаются')
+                                    supabase_client.update_subscription_status(user, claim_number, current_status)
+                                    # Уведомляем подписчика
+                                    print("self.field_chat_id = ", self.field_chat_id)
+                                    self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
+                                    if claim_link == self.done_status or claim_link == self.closed_status:
+                                        jira_client.delete_subscription(self.username, sub[self.field_claim_number])
+                                        self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
+                            except Exception as e:
+                                print(f"Ошибка опроса заявки {claim_number}: {e}")
+                    jira_client.logout()
+                # else:
+                #     self.bot.send_message(user, f"У вас нет подписок")
+            supabase_client.logout()
+        except Exception as e:
+            print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(6).minutes.do(self.poll_issue_status)
+        schedule.every(0.1113).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
