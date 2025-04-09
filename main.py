@@ -51,6 +51,9 @@ class TelegramBot:
         # self.typetask_field_3 = os.environ.get("GIRA_TYPETASK_FIELD_3")
         self.gira_project_key = os.environ.get("GIRA_PROJECT_KEY")
 
+        self.buttons_per_page = 50
+        self.list_of_claims = []
+
         self.register_handlers()
         self.start_polling_scheduler()
         self.reg_data = {}
@@ -163,6 +166,7 @@ class TelegramBot:
             self.supabase_client = None
 
         elif call.data == 'button_all_claims':
+            self.list_of_claims = []
             self.bot.answer_callback_query(call.id, "Вы нажали Проверить статус заявки")
             supabase_client = self.initialize_supabase_client()
             if supabase_client.check_user(self.username):
@@ -171,18 +175,9 @@ class TelegramBot:
                 if jira_token:
                     jira_client = JiraClient(jira_token)
                     del jira_token
-                    jira_claims_numbers_and_themes = jira_client.get_claims_numbers_and_themes()
-                    if jira_claims_numbers_and_themes:
-                        buttons = []
-                        for claim in jira_claims_numbers_and_themes:
-                            button = types.InlineKeyboardButton(f"{claim['number']} — {claim['theme']}",
-                                                                callback_data=f"claim_{claim['number']}")
-                            buttons.append(button)
-                        markup = types.InlineKeyboardMarkup(row_width=1)
-                        markup.add(*buttons)
-                        self.bot.send_message(call.message.chat.id,
-                                            "Выберите заявку для проверки её статуса:",
-                                            reply_markup=markup)
+                    self.list_of_claims = jira_client.get_claims_numbers_and_themes()
+                    if self.list_of_claims:
+                        self.keyboard_list_of_claims(call, 0)
                     else:
                         self.bot.send_message(call.message.chat.id, "У вас нет созданных заявок")
                         self.create_keyboard(call.message.chat.id, self.username)
@@ -239,6 +234,10 @@ class TelegramBot:
 
         elif call.data.startswith('button_all_subs_'):
             self.check_subscribe(call)
+
+        elif call.data.startswith("list_of_claims_"):
+            number = call.data.split('_')[-1]
+            self.keyboard_list_of_claims(call, number)
 
         elif call.data.startswith("upload_yes"):
             # Пользователь выбрал загрузку документа. Извлекаем issue_key из callback_data.
@@ -376,7 +375,7 @@ class TelegramBot:
     def process_registration_token(self, message, email=None):
         supabase_client = self.initialize_supabase_client()
         if not self.if_start(message) and not self.if_help(message):
-            if len(message.text) > 16:
+            if len(message.text) > 18:
                 if email:
                     response = supabase_client.add_user(self.username, "".join(message.text.split()), email)
                 else:
@@ -703,20 +702,17 @@ class TelegramBot:
                 buttons = []
                 jira_token = supabase_client.get_token_from_supabase(self.username)
                 if jira_token:
+                    current_page = 1
                     jira_client = JiraClient(jira_token)
                     del jira_token
                     for sub in subscription_numbers:
+                        # собираем словарь номера - темы заявок, все какие есть у пользователя
                         number = self.gira_project_key + '-' + str(sub)
                         theme = jira_client.get_theme_by_number(number)
-                        button = types.InlineKeyboardButton(f"{number} — {theme}",
-                                                            callback_data=f"claim_{number}") #{claim['number']}")
-                        buttons.append(button)
-                    markup = types.InlineKeyboardMarkup(row_width=1)
-                    markup.add(*buttons)
-                    self.bot.send_message(call.message.chat.id,
-                                          "Выберите заявку для проверки её статуса:",
-                                          reply_markup=markup)
+                        claim = {'number': number, 'theme': theme}
+                        self.list_of_claims.append(claim)
                     jira_client.logout()
+                    self.keyboard_list_of_claims(call, 0)
                 else:
                     self.bot.send_message(call.message.chat.id, "Проблема с подключением к Jira, сбросьте регистрацию и обновите токен.")
             else:
@@ -726,6 +722,46 @@ class TelegramBot:
             self.bot.send_message(call.message.chat.id, "Нет регистрации или токен недействителен")
         supabase_client.logout()
         self.supabase_client = None
+
+    def keyboard_list_of_claims(self, call, number):
+        try:
+            self.bot.edit_message_reply_markup(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=None
+            )
+        except Exception as e:
+            print("Не удалось удалить предыдущую клавиатуру:", e)
+
+        # number - номер начала куска списка
+        number = int(number)
+        print('number =', number)
+        print('self.buttons_per_page = ', self.buttons_per_page)
+        buttons = []
+        print('Мы внутри keyboard_list_of_claims')
+        # вывод клавиатуры - куска списка заявок
+        i = number
+        k = 0
+        while (i < len(self.list_of_claims)) and (k < self.buttons_per_page):
+            button = types.InlineKeyboardButton(f"{self.list_of_claims[i]['number']} — {self.list_of_claims[i]['theme']}",  callback_data=f"claim_{i}")
+            buttons.append(button)
+            i += 1
+            k += 1
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        # вывод кнопки назад, если не начало
+        if (number - self.buttons_per_page >= 0):
+            buttons.append(types.InlineKeyboardButton("<< Предыдущие заявки",
+                                                      callback_data=f"list_of_claims_{str(number - self.buttons_per_page)}"))
+        # вывод кнопки вперёд, если не конец
+        if (number + self.buttons_per_page < len(self.list_of_claims)):
+            buttons.append(types.InlineKeyboardButton("Следующие заявки >>",
+                                                      callback_data=f"list_of_claims_{str(number + self.buttons_per_page)}"))
+        markup.add(*buttons)
+        try:
+            self.bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+        except Exception as e:
+            print("Не удалось удалить предыдущее сообщение:", e)
+        self.bot.send_message(call.message.chat.id, "Выберите заявку для проверки её статуса:", reply_markup=markup)
 
     def poll_issue_status(self):
         supabase_client = self.initialize_supabase_client()
