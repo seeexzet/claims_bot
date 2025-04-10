@@ -667,9 +667,14 @@ class TelegramBot:
                 jira_client = JiraClient(jira_token)
                 del jira_token
                 response_from_jira = jira_client.check_claim_status(number, self.username)
+                print(response_from_jira)
                 jira_client.logout()
                 if response_from_jira:
-                    response = supabase_client.save_subscription(self.username, number, response_from_jira['status'])
+                    last_comment = response_from_jira.get('last_comment')
+                    if last_comment is not None and last_comment.get('created'):
+                        response = supabase_client.save_subscription(self.username, number, response_from_jira['status'], response_from_jira['last_comment']['created'])
+                    else:
+                        response = supabase_client.save_subscription(self.username, number, response_from_jira['status'])
                     if response:
                         self.bot.send_message(call.message.chat.id, f"Вы подписались на обновление статуса заявки {number}")
                     else:
@@ -677,7 +682,7 @@ class TelegramBot:
                 else:
                     self.bot.send_message(call.message.chat.id, f"Не удалось проверить статус заявки {number}")
         else:
-            self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на обновления статуса заявки {number}")
+            self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на обновления по заявке {number}")
         supabase_client.logout()
 
     def unsubscribe_claim(self, call, number):
@@ -689,7 +694,7 @@ class TelegramBot:
             else:
                 self.bot.send_message(call.message.chat.id, f"Подписку на заявку {number} не удалось удалить")
         else:
-            self.bot.send_message(call.message.chat.id, f"Подписки на заявку {number} нет")
+            self.bot.send_message(call.message.chat.id, f"Вы отписались от заявки {number}")
         supabase_client.logout()
 
     def check_subscribe(self, call):
@@ -706,6 +711,7 @@ class TelegramBot:
                     current_page = 1
                     jira_client = JiraClient(jira_token)
                     del jira_token
+                    self.list_of_claims = []
                     for sub in subscription_numbers:
                         # собираем словарь номера - темы заявок, все какие есть у пользователя
                         number = self.gira_project_key + '-' + str(sub)
@@ -777,7 +783,6 @@ class TelegramBot:
                     if subscriptions:
                         for sub in subscriptions:
                             claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
-                            # username = supabase_client.get_username_by_user_id(sub[self.field_user_id])
                             last_status = sub.get(self.field_claim_status, "")
                             print('Проверка статуса ', user, ' ', claim_number)
                             try:
@@ -804,7 +809,7 @@ class TelegramBot:
             print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(0.1113).minutes.do(self.poll_issue_status)
+        schedule.every(5).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:

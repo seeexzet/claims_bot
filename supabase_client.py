@@ -29,6 +29,7 @@ class SupabaseClient:
         self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
         self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
         self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
+        self.field_last_comment_date = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_DATE")
         # Создать клиента Supabase с использованием анонимного ключа
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
@@ -190,13 +191,14 @@ class SupabaseClient:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
 
-    def save_subscription(self, username, claim_number, status):
+    def save_subscription(self, username, claim_number, status, created_at=None):
         try:
             user_id = self.get_user_id_by_username(username)
             response = self.client.table(self.table_subscriptions).insert({
                 self.field_user_id: user_id,
                 self.field_claim_number: claim_number.split('-')[1],
-                self.field_claim_status: status
+                self.field_claim_status: status,
+                self.field_last_comment_date: created_at
             }).execute()
             return response
         except Exception as e:

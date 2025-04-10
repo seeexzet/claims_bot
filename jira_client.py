@@ -245,7 +245,11 @@ class JiraClient():
             self.jira._session.close()
 
     def readable_time(self, original_time):
-        return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%d.%m.%Y %H:%M:%S")
+        #return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%d.%m.%Y %H:%M:%S")
+        dt = datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z")
+        formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
+        tz = dt.strftime("%z")[:3]
+        return f"{formatted}{tz}"
 
     # def get_list_of_requests_types(self, token):
     #     url = f"{self.domain}rest/servicedeskapi/servicedesk/3/requesttype"
