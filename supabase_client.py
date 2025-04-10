@@ -191,7 +191,7 @@ class SupabaseClient:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
 
-    def save_subscription(self, username, claim_number, status, created_at=None):
+    def save_subscription(self, username, claim_number, status, created_at='2000-01-01 00:01:44+00'):
         try:
             user_id = self.get_user_id_by_username(username)
             response = self.client.table(self.table_subscriptions).insert({
@@ -255,10 +255,6 @@ class SupabaseClient:
         try:
                 user_id = self.get_user_id_by_username(username)
                 print('dddd ', user_id, claim_number.split('-')[1], new_status)
-                # response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status}).match({
-                #     self.field_user_id: user_id,
-                #     self.field_claim_number: int(claim_number.split('-')[1])
-                # }).execute()
                 response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
                     .eq(self.field_user_id, user_id)\
                     .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
@@ -266,6 +262,18 @@ class SupabaseClient:
                 print(f"Поменяли статус в базе", response)
         except Exception as e:
                 print(f"Ошибка обновления статуса подписки: {e}")
+
+    def update_subscription_date(self, username, claim_number, new_date):
+        try:
+                user_id = self.get_user_id_by_username(username)
+                print('dddd ', user_id, claim_number.split('-')[1], new_date)
+                response = self.client.table(self.table_subscriptions).update({self.field_last_comment_date: new_date})\
+                    .eq(self.field_user_id, user_id)\
+                    .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
+                .execute()
+                print(f"Поменяли дату комментария в базе", response)
+        except Exception as e:
+                print(f"Ошибка обновления даты комментария подписки: {e}")
 
     def logout(self):
         try:

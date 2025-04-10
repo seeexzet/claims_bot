@@ -42,6 +42,7 @@ class TelegramBot:
         self.field_chat_id = os.environ.get("FIELD_SUBSCRIBE_CHAT_ID")
         self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
         self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
+        self.field_last_comment_date = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_DATE")
 
         self.todo_status = os.environ.get("GIRA_TODO_STATUS")
         self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
@@ -776,6 +777,7 @@ class TelegramBot:
             user_list = supabase_client.get_user_list()
             for user in user_list:
                 subscriptions = supabase_client.get_subscriptions(user)
+                print(subscriptions)
                 jira_token = supabase_client.get_token_from_supabase(user)
                 if jira_token:
                     jira_client = JiraClient(jira_token)
@@ -784,10 +786,20 @@ class TelegramBot:
                         for sub in subscriptions:
                             claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
                             last_status = sub.get(self.field_claim_status, "")
+                            last_comment = sub.get(self.field_last_comment_date, "")
                             print('Проверка статуса ', user, ' ', claim_number)
                             try:
-                                current_status = jira_client.check_claim_status(claim_number, user)['status']
-                                print('current_status=', current_status, ' last=', last_status)
+                                claim_status = jira_client.check_claim_status(claim_number, user)
+                                current_status = claim_status['status']
+                                print('claim_status = ', claim_status)
+                                current_comment = claim_status.get('last_comment')
+                                print('current_comment = ', current_comment)
+                                if current_comment is not None and current_comment.get('created'):
+                                    current_date_of_comment = current_comment.get('created')
+                                    print('current_date_of_comment = ', current_date_of_comment)
+                                else:
+                                    current_date_of_comment = None
+                                print('current_status = ', current_status, ' last = ', last_status)
                                 claim_link = jira_client.get_claim_link_by_number(sub[self.field_claim_number])
                                 if current_status != last_status:
                                     # Обновляем статус в Supabase
@@ -799,6 +811,10 @@ class TelegramBot:
                                     if claim_link == self.done_status or claim_link == self.closed_status:
                                         jira_client.delete_subscription(self.username, sub[self.field_claim_number])
                                         self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
+                                if current_date_of_comment and current_date_of_comment != last_comment:
+                                    print('Даты комментариев отличаются ', current_date_of_comment, last_comment)
+                                    supabase_client.update_subscription_date(user, claim_number, current_date_of_comment) # функция, которая устанавливает новую дату
+                                    # self.bot.send_message(user, f"К заявке {claim_number} оставили новый комментарий:\n{current_comment['text']}.\n{claim_link}")
                             except Exception as e:
                                 print(f"Ошибка опроса заявки {claim_number}: {e}")
                     jira_client.logout()
@@ -809,7 +825,7 @@ class TelegramBot:
             print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(5).minutes.do(self.poll_issue_status)
+        schedule.every(0.15).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
