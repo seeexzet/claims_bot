@@ -267,7 +267,7 @@ class JiraClient():
 
 
 if __name__ == "__main__":
-    TOKEN = 'ODc0Njg2NjcyNDc5Opcx0jeCzKjI9++eL/Pi49QBeAmv'
+    TOKEN = ''
     jira_client = JiraClient(TOKEN)
     # print(jira_client.get_claims_numbers())
 
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     # response = jira_client.create_claim('user1', claim_data)
     # print("Загружены данные: ", response)
 
-    print(jira_client.check_claim_status('TISM-1730', 1679330))
+    print(jira_client.check_claim_status('TISM-1730', 1))
 
     # print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
     # print('---')
