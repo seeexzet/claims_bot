@@ -152,7 +152,7 @@ class JiraClient():
                 if comments:
                     last_comment = comments[-1].body
                     last_comment_author = comments[-1].author.displayName
-                    last_comment_created = comments[-1].created
+                    last_comment_created = comments[-1].created #.split('.')[0]
                 else:
                     last_comment = None
                     last_comment_author = None
@@ -160,13 +160,13 @@ class JiraClient():
                 print('Проверили статус заявки')
                 return {
                     'status': issue.fields.status.name,
-                    'last_update': self.readable_time(issue.fields.updated),
+                    'last_update': issue.fields.updated, #.split('.')[0],
                     'summary': issue.fields.summary,
                     'description': issue.fields.description,
                     'last_comment': {
                         'text': last_comment,
                         'author': last_comment_author,
-                        'created': self.readable_time(last_comment_created)
+                        'created': last_comment_created
                     } if last_comment else None
                 }
             else:
@@ -245,7 +245,7 @@ class JiraClient():
             self.jira._session.close()
 
     def readable_time(self, original_time):
-        return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%d.%m.%Y %H:%M:%S")
+        return datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z")
         # dt = datetime.strptime(original_time, "%Y-%m-%d %H:%M:%S.%f%z")
         # formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
         # return f"{formatted}"

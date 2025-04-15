@@ -6,6 +6,7 @@ from telebot import types
 import os
 import re
 import time
+from datetime import datetime
 import requests
 import asyncio
 from io import BytesIO
@@ -56,6 +57,7 @@ class TelegramBot:
         self.buttons_per_page = 50
         self.list_of_claims = []
 
+        self.username = None
         self.register_handlers()
         self.start_polling_scheduler()
         self.reg_data = {}
@@ -601,9 +603,9 @@ class TelegramBot:
                         message.chat.id,
                         f"Статус заявки {number}: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
                         f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
-                        f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nПоследний комментарий "
+                        f"\n\nПоследнее обновление: <b>{self.readable_time(claim_info['last_update'])}</b> \n\nПоследний комментарий "
                         f"оставлен <b>{claim_info['last_comment']['author']}</b> в "
-                        f"<b>{claim_info['last_comment']['created']}</b>:\n\n"
+                        f"<b>{self.readable_time(claim_info['last_comment']['created'])}</b>:\n\n"
                         f"{claim_info['last_comment']['text']}",
                         parse_mode='HTML',
                         reply_markup=markup
@@ -787,13 +789,14 @@ class TelegramBot:
                             claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
                             last_status = sub.get(self.field_claim_status, "")
                             last_comment = sub.get(self.field_last_comment_date, "")
+                            print('last_comment = ', last_comment)
                             print('Проверка статуса ', user, ' ', claim_number)
                             try:
+                                print('Зашли в try ')
                                 claim_status = jira_client.check_claim_status(claim_number, user)
-                                current_status = claim_status['status']
                                 print('claim_status = ', claim_status)
+                                current_status = claim_status['status']
                                 current_comment = claim_status.get('last_comment')
-                                print('current_comment = ', current_comment)
                                 if current_comment is not None and current_comment.get('created'):
                                     current_date_of_comment = current_comment.get('created')
                                     print('current_date_of_comment = ', current_date_of_comment)
@@ -811,10 +814,11 @@ class TelegramBot:
                                     if claim_link == self.done_status or claim_link == self.closed_status:
                                         jira_client.delete_subscription(self.username, sub[self.field_claim_number])
                                         self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
-                                if current_date_of_comment and current_date_of_comment != last_comment:
-                                    print('Даты комментариев отличаются ', current_date_of_comment, last_comment)
+                                if current_date_of_comment and current_date_of_comment > last_comment:
+                                    print('Даты комментариев отличаются, cur = ', current_date_of_comment, 'last = ', last_comment)
                                     supabase_client.update_subscription_date(user, claim_number, current_date_of_comment) # функция, которая устанавливает новую дату
                                     # self.bot.send_message(user, f"К заявке {claim_number} оставили новый комментарий:\n{current_comment['text']}.\n{claim_link}")
+                                    print('Вместо сообщения пользователю ')
                             except Exception as e:
                                 print(f"Ошибка опроса заявки {claim_number}: {e}")
                     jira_client.logout()
@@ -825,7 +829,7 @@ class TelegramBot:
             print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(0.15).minutes.do(self.poll_issue_status)
+        schedule.every(0.1).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
@@ -860,8 +864,21 @@ class TelegramBot:
         else:
             return False
 
+    # def is_new_date(self, date_from_jira, date_from_supa):
+    #     dt1 = datetime.strptime(date_from_jira, "%Y-%m-%d %H:%M:%S.%f%z")
+    #     dt2 = datetime.strptime(date_from_supa, "%Y-%m-%dT%H:%M:%S")
+    #     if dt1 > dt2:
+    #         return True
+    #     else:
+    #         return False
+
+    def readable_time(self, original_time):
+        return str(datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S"))
+
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")
+        if not self.username:
+            self.username = message.chat.id
         self.create_keyboard(message.chat.id, self.username)
 
     def run(self):

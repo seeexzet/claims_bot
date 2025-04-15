@@ -191,7 +191,7 @@ class SupabaseClient:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
 
-    def save_subscription(self, username, claim_number, status, created_at='2000-01-01 00:01:44+00'):
+    def save_subscription(self, username, claim_number, status, created_at='2020-01-01 00:01:44+00'):
         try:
             user_id = self.get_user_id_by_username(username)
             response = self.client.table(self.table_subscriptions).insert({
@@ -254,7 +254,7 @@ class SupabaseClient:
     def update_subscription_status(self, username, claim_number, new_status):
         try:
                 user_id = self.get_user_id_by_username(username)
-                print('dddd ', user_id, claim_number.split('-')[1], new_status)
+                print('ssss ', user_id, claim_number.split('-')[1], new_status)
                 response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
                     .eq(self.field_user_id, user_id)\
                     .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
