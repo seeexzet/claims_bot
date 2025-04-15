@@ -43,7 +43,8 @@ class TelegramBot:
         self.field_chat_id = os.environ.get("FIELD_SUBSCRIBE_CHAT_ID")
         self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
         self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
-        self.field_last_comment_date = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_DATE")
+        self.field_last_comment_id = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_ID")
+        self.max_subscribe = int(os.environ.get("MAX_SUBSCRIBE"))
 
         self.todo_status = os.environ.get("GIRA_TODO_STATUS")
         self.inprogress_status = os.environ.get("GIRA_TODO_INPROGRESS")
@@ -615,7 +616,7 @@ class TelegramBot:
                         message.chat.id,
                         f"Статус заявки №{number}: <b>{claim_info['status']}</b> \n\nТема заявки:\n"
                         f"{claim_info['summary']}\n\nОписание заявки:\n{claim_info['description']}"
-                        f"\n\nПоследнее обновление: <b>{claim_info['last_update']}</b> \n\nКомментариев нет.",
+                        f"\n\nПоследнее обновление: <b>{self.readable_time(claim_info['last_update'])}</b> \n\nКомментариев нет.",
                         parse_mode='HTML',
                         reply_markup=markup
                     )
@@ -640,24 +641,27 @@ class TelegramBot:
     def add_comment(self, message, number):
         supabase_client = self.initialize_supabase_client()
         jira_token = supabase_client.get_token_from_supabase(self.username)
-        supabase_client.logout()
         self.supabase_client = None
         if jira_token:
             jira_client = JiraClient(jira_token)
             del jira_token
             response = jira_client.add_comment_to_claim(number, self.username, message.text)
-            jira_client.logout()
-            # print('Ответ при добавлении комментария', response)
+            #  Ответ при добавлении комментария
             if response:
                 # del response
                 self.bot.send_message(message.chat.id, f"Комментарий к заявке <b>{number}</b> добавлен", parse_mode='HTML')
                 self.create_keyboard(message.chat.id, self.username)
+                if supabase_client.is_subscription(self.username, number):
+                    print('идём менять в подписках id комментария')
+                    supabase_client.update_subscription_id(self.username, number, int(response.id))
             else:
                 self.bot.send_message(message.chat.id, "Не удалось добавить комментарий")
                 self.create_keyboard(message.chat.id, self.username)
         else:
             self.bot.send_message(message.chat.id, "Пользователь не зарегистрирован в Supabase")
             self.create_keyboard(message.chat.id, self.username)
+        jira_client.logout()
+        supabase_client.logout()
 
     def add_subscribe(self, call, number):
         # проверка, а нет ли уже такой записи? Если нет - добавить запись в базу.
@@ -670,18 +674,22 @@ class TelegramBot:
                 jira_client = JiraClient(jira_token)
                 del jira_token
                 response_from_jira = jira_client.check_claim_status(number, self.username)
-                print(response_from_jira)
+                print('response_from_jira = ', response_from_jira)
                 jira_client.logout()
                 if response_from_jira:
                     last_comment = response_from_jira.get('last_comment')
-                    if last_comment is not None and last_comment.get('created'):
-                        response = supabase_client.save_subscription(self.username, number, response_from_jira['status'], response_from_jira['last_comment']['created'])
+                    if last_comment is not None and last_comment.get('id'):
+                        response = supabase_client.can_subscription(self.username, number, response_from_jira['status'], response_from_jira['last_comment']['id'])
                     else:
-                        response = supabase_client.save_subscription(self.username, number, response_from_jira['status'])
-                    if response:
+                        response = supabase_client.can_subscription(self.username, number, response_from_jira['status'])
+                    print('response = ', response)
+                    if response.get("data"):
                         self.bot.send_message(call.message.chat.id, f"Вы подписались на обновление статуса заявки {number}")
-                    else:
-                        self.bot.send_message(call.message.chat.id, f"Не удалось подписаться на заявку {number}")
+                    elif response.get("code") == "LIMIT_EXCEEDED":
+                        print('erooooooooor')
+                        self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на максимальное количество заявок - на {self.max_subscribe}. Выберите заявки, на которые подписаны и отпишитесь от одной из них.")
+                    elif response.get("code") == "SUPABASE_ERROR":
+                        self.bot.send_message(call.message.chat.id,  f"Не удалось сделать подписку на заявку {number}")
                 else:
                     self.bot.send_message(call.message.chat.id, f"Не удалось проверить статус заявки {number}")
         else:
@@ -788,17 +796,15 @@ class TelegramBot:
                         for sub in subscriptions:
                             claim_number = self.gira_project_key + '-' + str(sub[self.field_claim_number])
                             last_status = sub.get(self.field_claim_status, "")
-                            last_comment = sub.get(self.field_last_comment_date, "")
-                            print('last_comment = ', last_comment)
+                            last_comment_id = sub.get(self.field_last_comment_id, 0)
+                            print('last_comment_id = ', last_comment_id)
                             print('Проверка статуса ', user, ' ', claim_number)
                             try:
-                                print('Зашли в try ')
                                 claim_status = jira_client.check_claim_status(claim_number, user)
-                                print('claim_status = ', claim_status)
                                 current_status = claim_status['status']
                                 current_comment = claim_status.get('last_comment')
                                 if current_comment is not None and current_comment.get('created'):
-                                    current_date_of_comment = current_comment.get('created')
+                                    current_date_of_comment = current_comment.get('id')
                                     print('current_date_of_comment = ', current_date_of_comment)
                                 else:
                                     current_date_of_comment = None
@@ -814,10 +820,10 @@ class TelegramBot:
                                     if claim_link == self.done_status or claim_link == self.closed_status:
                                         jira_client.delete_subscription(self.username, sub[self.field_claim_number])
                                         self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
-                                if current_date_of_comment and current_date_of_comment > last_comment:
-                                    print('Даты комментариев отличаются, cur = ', current_date_of_comment, 'last = ', last_comment)
-                                    supabase_client.update_subscription_date(user, claim_number, current_date_of_comment) # функция, которая устанавливает новую дату
-                                    # self.bot.send_message(user, f"К заявке {claim_number} оставили новый комментарий:\n{current_comment['text']}.\n{claim_link}")
+                                if current_date_of_comment and current_date_of_comment > last_comment_id:
+                                    print('Даты комментариев отличаются, cur = ', current_date_of_comment, 'last = ', last_comment_id)
+                                    supabase_client.update_subscription_id(user, claim_number, current_date_of_comment) # функция, которая устанавливает новую дату
+                                    self.bot.send_message(user, f"К заявке {claim_number} оставили новый комментарий:\n{current_comment['text']}.\n{claim_link}")
                                     print('Вместо сообщения пользователю ')
                             except Exception as e:
                                 print(f"Ошибка опроса заявки {claim_number}: {e}")
@@ -829,7 +835,7 @@ class TelegramBot:
             print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(0.1).minutes.do(self.poll_issue_status)
+        schedule.every(9).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:
@@ -873,7 +879,8 @@ class TelegramBot:
     #         return False
 
     def readable_time(self, original_time):
-        return str(datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S"))
+        dt = datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def handle_text(self, message):
         self.bot.send_message(message.chat.id, "Используйте кнопки для навигации по боту.")

@@ -153,10 +153,12 @@ class JiraClient():
                     last_comment = comments[-1].body
                     last_comment_author = comments[-1].author.displayName
                     last_comment_created = comments[-1].created #.split('.')[0]
+                    last_comment_id = int(comments[-1].id)
                 else:
                     last_comment = None
                     last_comment_author = None
                     last_comment_created = None
+                    last_comment_id = 0
                 print('Проверили статус заявки')
                 return {
                     'status': issue.fields.status.name,
@@ -166,7 +168,8 @@ class JiraClient():
                     'last_comment': {
                         'text': last_comment,
                         'author': last_comment_author,
-                        'created': last_comment_created
+                        'created': last_comment_created,
+                        'id': last_comment_id
                     } if last_comment else None
                 }
             else:
@@ -264,17 +267,17 @@ class JiraClient():
 
 
 if __name__ == "__main__":
-    TOKEN = ''
+    TOKEN = 'ODc0Njg2NjcyNDc5Opcx0jeCzKjI9++eL/Pi49QBeAmv'
     jira_client = JiraClient(TOKEN)
     # print(jira_client.get_claims_numbers())
 
     # # Получить данные из таблицы до аутентификации
-    claim_data = {'theme': 'theme', 'type': 'Incident', 'text': 'description', 'priority': 'P1 - High'}
-    response = jira_client.create_claim('user1', claim_data)
-    print("Загружены данные: ", response)
+    # claim_data = {'theme': 'theme', 'type': 'Incident', 'text': 'description', 'priority': 'P1 - High'}
+    # response = jira_client.create_claim('user1', claim_data)
+    # print("Загружены данные: ", response)
 
-    # print(jira_client.check_claim_status(30, "Simm20"))
-    #
+    print(jira_client.check_claim_status('TISM-1730', 1679330))
+
     # print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
     # print('---')
 

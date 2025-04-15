@@ -15,6 +15,7 @@ class SupabaseClient:
         self.supabase_func_of_insert_or_update_without_email = os.environ.get("SUPABASE_FUNCTION_OF_INSERT_OR_UPDATE_WITHOUT_EMAIL")
         self.supabase_func_of_insert_or_update = os.environ.get("SUPABASE_FUNCTION_OF_INSERT_OR_UPDATE")
         self.supabase_func_of_delete = os.environ.get("SUPABASE_FUNCTION_OF_DELETE")
+        self.max_subscribe = int(os.environ.get("MAX_SUBSCRIBE"))
 
         self.table_users = os.environ.get("TABLE_USERNAME")
         self.field_username = os.environ.get("FIELD_USERNAME")
@@ -29,7 +30,7 @@ class SupabaseClient:
         self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
         self.field_claim_number = os.environ.get("FIELD_SUBSCRIBE_CLAIM_NUMBER")
         self.field_claim_status = os.environ.get("FIELD_SUBSCRIBE_CLAIM_STATUS")
-        self.field_last_comment_date = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_DATE")
+        self.field_last_comment_id = os.environ.get("FIELD_SUBSCRIBE_LAST_COMMENT_ID")
         # Создать клиента Supabase с использованием анонимного ключа
         self.client: Client = create_client(self.url, self.anon_key)
         self.user = None # для будущей аутентификации
@@ -191,16 +192,16 @@ class SupabaseClient:
             print(f"Ошибка удаления пользователя {username}: {e}")
             return None
 
-    def save_subscription(self, username, claim_number, status, created_at='2020-01-01 00:01:44+00'):
+    def save_subscription(self, username, claim_number, status, last_comment_id=0):
         try:
             user_id = self.get_user_id_by_username(username)
             response = self.client.table(self.table_subscriptions).insert({
                 self.field_user_id: user_id,
                 self.field_claim_number: claim_number.split('-')[1],
                 self.field_claim_status: status,
-                self.field_last_comment_date: created_at
+                self.field_last_comment_id: last_comment_id
             }).execute()
-            return response
+            return {"data": response}
         except Exception as e:
             print(f"Ошибка сохранения подписки: {e}")
             return None
@@ -243,6 +244,25 @@ class SupabaseClient:
             print(f"Ошибка проверки подписки: {e}")
             return None
 
+    def can_subscription(self, username, number, status, comment_id=0):
+        try:
+            user_id = self.get_user_id_by_username(username)
+            if not user_id:
+                print(f"Пользователя {username} нет в базе")
+                return None
+            response = self.client.table(self.table_subscriptions) \
+                .select("id", count="exact") \
+                .eq(self.field_user_id, user_id) \
+                .execute()
+            subscribe_count = str(response.count) #data
+            if response.count < self.max_subscribe:
+                return self.save_subscription(username, number, status, comment_id)
+            else:
+                return {"error": True, "code": "LIMIT_EXCEEDED"}
+        except Exception as e:
+            print(f"Ошибка проверки подписки: {e}")
+            return {"error": True, "code": "SUPABASE_ERROR"}
+
     def get_user_list(self):
         try:
             response = self.client.table(self.table_users).select(self.field_username).execute()
@@ -254,7 +274,6 @@ class SupabaseClient:
     def update_subscription_status(self, username, claim_number, new_status):
         try:
                 user_id = self.get_user_id_by_username(username)
-                print('ssss ', user_id, claim_number.split('-')[1], new_status)
                 response = self.client.table(self.table_subscriptions).update({self.field_claim_status: new_status})\
                     .eq(self.field_user_id, user_id)\
                     .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
@@ -263,15 +282,14 @@ class SupabaseClient:
         except Exception as e:
                 print(f"Ошибка обновления статуса подписки: {e}")
 
-    def update_subscription_date(self, username, claim_number, new_date):
+    def update_subscription_id(self, username, claim_number, new_id):
         try:
                 user_id = self.get_user_id_by_username(username)
-                print('dddd ', user_id, claim_number.split('-')[1], new_date)
-                response = self.client.table(self.table_subscriptions).update({self.field_last_comment_date: new_date})\
+                response = self.client.table(self.table_subscriptions).update({self.field_last_comment_id: new_id})\
                     .eq(self.field_user_id, user_id)\
                     .eq(self.field_claim_number, int(claim_number.split('-')[1]))\
                 .execute()
-                print(f"Поменяли дату комментария в базе", response)
+                print(f"Поменяли id последнего комментария в базе", response)
         except Exception as e:
                 print(f"Ошибка обновления даты комментария подписки: {e}")
 
