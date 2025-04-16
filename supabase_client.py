@@ -25,6 +25,7 @@ class SupabaseClient:
         self.field_phone = os.environ.get("FIELD_PHONE")
         self.field_token = os.environ.get("FIELD_TOKEN")
         self.field_is_deleted = os.environ.get("FIELD_IS_DELETED")
+        self.field_jira_user_id = os.environ.get("FIELD_JIRA_ID")
 
         self.table_subscriptions = os.environ.get("TABLE_SUBSCRIBE")
         self.field_user_id = os.environ.get("FIELD_SUBSCRIBE_USER_ID")
@@ -70,12 +71,13 @@ class SupabaseClient:
             print(f"Ошибка при проверке токена для пользователя {username}: {e}")
             return False
 
-    def add_user(self, username: int, token: str, email: str): # registration_data: dict):
+    def add_user(self, username: int, token: str, email: str, jira_user_id: int): # registration_data: dict):
         if not self.check_user_token(username):
             data = {
                 self.field_username: username,
                 self.field_email: email,
-                self.field_token: token
+                self.field_token: token,
+                self.field_jira_user_id: jira_user_id
             }
             print('data = ', data)
             try:
@@ -83,6 +85,7 @@ class SupabaseClient:
                     "enc_key": self.secret_code_for_token,
                     "p_token": token,
                     "p_email": email,
+                    "p_jira_id": jira_user_id,
                     "p_user_tg": int(username)
                 }).execute()
                 print('response = ', response)

@@ -20,6 +20,7 @@ class JiraClient():
         self.author_field = os.environ.get("GIRA_AUTHOR_FIELD")
         self.typetask_field_1 = os.environ.get("GIRA_TYPETASK_FIELD_1")
         self.typetask_field_2 = os.environ.get("GIRA_TYPETASK_FIELD_2")
+        self.jira_name_prefix = os.environ.get("GIRA_NAME_PREFIX")
         jira_options = {'server': self.domain}
         # Авторизация с помощью Basic Auth (email и API токен, полученный в настройках Atlassian)
         self.jira = JIRA(options=jira_options, token_auth=token)  # basic_auth=(self.email, token))
@@ -232,6 +233,13 @@ class JiraClient():
     def get_claim_by_number(self, claim_number):
         return self.jira.issue(claim_number)
 
+    def get_user_id(self):
+        try:
+            return int(self.jira.myself().get("key").split(self.jira_name_prefix)[1])
+        except JIRAError as e:
+            print(e)
+            return None
+
     def get_user_email(self):
         user = self.jira.myself()
         print("Email:", user.get('emailAddress'))
@@ -276,7 +284,7 @@ if __name__ == "__main__":
     # response = jira_client.create_claim('user1', claim_data)
     # print("Загружены данные: ", response)
 
-    print(jira_client.check_claim_status('TISM-1730', 1))
+    # print(jira_client.check_claim_status('TISM-1730', 1))
 
     # print(jira_client.add_comment_to_claim(30, "Simm20", "Текст комментария"))
     # print('---')
@@ -285,5 +293,7 @@ if __name__ == "__main__":
     # jira_client.get_list_of_requests_types(TOKEN)
 
     # print(jira_client.get_claim_link_by_number(1775))
+
+    # print(jira_client.get_user_id())
 
 

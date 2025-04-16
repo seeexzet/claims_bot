@@ -181,6 +181,7 @@ class TelegramBot:
                     jira_client = JiraClient(jira_token)
                     del jira_token
                     self.list_of_claims = jira_client.get_claims_numbers_and_themes()
+                    jira_client.logout()
                     if self.list_of_claims:
                         self.keyboard_list_of_claims(call, 0)
                     else:
@@ -380,9 +381,14 @@ class TelegramBot:
     def process_registration_token(self, message, email=None):
         supabase_client = self.initialize_supabase_client()
         if not self.if_start(message) and not self.if_help(message):
-            if len(message.text) > 18:
+            jira_client = JiraClient(message.text)
+            print('jira_client = ', jira_client)
+            jira_user_id = jira_client.get_user_id()
+            if jira_client.get_user_id(): #len(message.text) > 18:
+                # пробуем подключиться к Jira
                 if email:
-                    response = supabase_client.add_user(self.username, "".join(message.text.split()), email)
+                    response = supabase_client.add_user(self.username, "".join(message.text.split()), email, jira_user_id)
+                    print(response)
                 else:
                     response = supabase_client.add_user_without_email(self.username, "".join(message.text.split()))
                 if response:
@@ -391,10 +397,11 @@ class TelegramBot:
                     self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
                 # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
                 self.create_keyboard(message.chat.id, self.username)
-                del message.text
-        else:
-            self.bot.send_message(message.chat.id, "Токен введён неверно. Повторите ввод")
-            self.bot.register_next_step_handler(message, self.process_registration_token)
+                # del message.text
+                jira_client.logout()
+            else:
+                self.bot.send_message(message.chat.id, "Токен введён неверно. Повторите ввод")
+                self.bot.register_next_step_handler(message, self.process_registration_token)
         supabase_client.logout()
         self.supabase_client = None
 
