@@ -88,13 +88,21 @@ class SupabaseClient:
                     "p_jira_id": jira_user_id,
                     "p_user_tg": int(username)
                 }).execute()
-                print('response = ', response)
+                print('response from execute = ', response)
                 del token
-                return response.data # Ответ от Supabase.
+                return {
+                    'data': response.data,
+                    'error': False
+                } # Ответ от Supabase.
             except Exception as e:
-                print(f"Error adding user '{username}': {str(e)}")
-                return None
-            return None
+                if e.code:
+                    return {
+                        'error': True,
+                        'code': e.code,
+                        'message': e.message 
+                    }
+                else:
+                    return None
 
     def add_user_without_email(self, username: int, token: str): # registration_data: dict):
         if not self.check_user_token(username):
@@ -114,7 +122,7 @@ class SupabaseClient:
                 return response.data # Ответ от Supabase.
             except Exception as e:
                 print(f"Error adding user '{username}': {str(e)}")
-                return None
+                return {'error': str(e)}
             return None
 
     def get_user_id_by_username(self, username: int):

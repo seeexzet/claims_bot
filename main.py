@@ -388,11 +388,16 @@ class TelegramBot:
                 # пробуем подключиться к Jira
                 if email:
                     response = supabase_client.add_user(self.username, "".join(message.text.split()), email, jira_user_id)
-                    print(response)
                 else:
                     response = supabase_client.add_user_without_email(self.username, "".join(message.text.split()))
-                if response:
+                print(response)
+                if response is None:
+                    self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
+                elif 'data' in response:
                     self.bot.send_message(message.chat.id, "Регистрация прошла успешно!")
+                elif 'error' in response:
+                    if response.get('code') == "23505":
+                        self.bot.send_message(message.chat.id, "Уже есть регистрация с Вашим профилем Jira для другого аккаунта Telegram.")
                 else:
                     self.bot.send_message(message.chat.id, "Ошибка регистрации, попробуйте еще раз.")
                 # Отображаем клавиатуру (метод create_keyboard реализуется отдельно)
