@@ -174,8 +174,9 @@ class JiraClient():
                     } if last_comment else None
                 }
             else:
-                print('Не ваша заявка')
-                return None
+                return {
+                    'error': 'Не ваша заявка'
+                }
         except JIRAError as e:
             return None
 
@@ -235,7 +236,8 @@ class JiraClient():
 
     def get_user_id(self):
         try:
-            return int(self.jira.myself().get("key").split(self.jira_name_prefix)[1])
+            print('self.jira.myself().get("key") = ', self.jira.myself().get("key"))
+            return self.jira.myself().get("key")
         except JIRAError as e:
             print(e)
             return None

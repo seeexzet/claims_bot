@@ -7,6 +7,7 @@ import os
 import re
 import time
 from datetime import datetime
+import pytz
 import requests
 import asyncio
 from io import BytesIO
@@ -592,9 +593,10 @@ class TelegramBot:
             jira_client = JiraClient(jira_token)
             del jira_token
             claim_info = jira_client.check_claim_status(number, self.username)
-            # print('claim_info==', claim_info)
             jira_client.logout()
-            if claim_info:
+            if 'error' in claim_info:
+                self.bot.send_message(message.chat.id, f"Вы пытаетесь посмотреть чужую заявку")
+            elif claim_info:
                 markup = types.InlineKeyboardMarkup()
                 comment_button = types.InlineKeyboardButton(
                     text="Оставить комментарий", callback_data=f"comment_{number}"
@@ -688,7 +690,9 @@ class TelegramBot:
                 response_from_jira = jira_client.check_claim_status(number, self.username)
                 print('response_from_jira = ', response_from_jira)
                 jira_client.logout()
-                if response_from_jira:
+                if 'error' in response_from_jira:
+                    self.bot.send_message(call.message.chat.id, f"Вы пытаетесь посмотреть чужую заявку")
+                elif response_from_jira:
                     last_comment = response_from_jira.get('last_comment')
                     if last_comment is not None and last_comment.get('id'):
                         response = supabase_client.can_subscription(self.username, number, response_from_jira['status'], response_from_jira['last_comment']['id'])
@@ -815,30 +819,33 @@ class TelegramBot:
                             print('Проверка статуса ', user, ' ', claim_number)
                             try:
                                 claim_status = jira_client.check_claim_status(claim_number, user)
-                                current_status = claim_status['status']
-                                current_comment = claim_status.get('last_comment')
-                                if current_comment is not None and current_comment.get('created'):
-                                    current_date_of_comment = current_comment.get('id')
-                                    print('current_date_of_comment = ', current_date_of_comment)
+                                if 'error' in claim_status:
+                                    self.bot.send_message(user, f"Вы пытаетесь посмотреть чужую заявку")
                                 else:
-                                    current_date_of_comment = None
-                                print('current_status = ', current_status, ' last = ', last_status)
-                                claim_link = jira_client.get_claim_link_by_number(sub[self.field_claim_number])
-                                if current_status != last_status:
-                                    # Обновляем статус в Supabase
-                                    print('Статусы отличаются')
-                                    supabase_client.update_subscription_status(user, claim_number, current_status)
-                                    # Уведомляем подписчика
-                                    print("self.field_chat_id = ", self.field_chat_id)
-                                    self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
-                                    if claim_link == self.done_status or claim_link == self.closed_status:
-                                        jira_client.delete_subscription(self.username, sub[self.field_claim_number])
-                                        self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
-                                if current_date_of_comment and current_date_of_comment > last_comment_id:
-                                    print('Даты комментариев отличаются, cur = ', current_date_of_comment, 'last = ', last_comment_id)
-                                    supabase_client.update_subscription_id(user, claim_number, current_date_of_comment) # функция, которая устанавливает новую дату
-                                    self.bot.send_message(user, f"К заявке {claim_number} оставили новый комментарий:\n{current_comment['text']}.\n{claim_link}")
-                                    print('Вместо сообщения пользователю ')
+                                    current_status = claim_status['status']
+                                    current_comment = claim_status.get('last_comment')
+                                    if current_comment is not None and current_comment.get('created'):
+                                        current_date_of_comment = current_comment.get('id')
+                                        print('current_date_of_comment = ', current_date_of_comment)
+                                    else:
+                                        current_date_of_comment = None
+                                    print('current_status = ', current_status, ' last = ', last_status)
+                                    claim_link = jira_client.get_claim_link_by_number(sub[self.field_claim_number])
+                                    if current_status != last_status:
+                                        # Обновляем статус в Supabase
+                                        print('Статусы отличаются')
+                                        supabase_client.update_subscription_status(user, claim_number, current_status)
+                                        # Уведомляем подписчика
+                                        print("self.field_chat_id = ", self.field_chat_id)
+                                        self.bot.send_message(user, f"Статус заявки {claim_number} изменился с {last_status} на: {current_status}.\n{claim_link}")
+                                        if claim_link == self.done_status or claim_link == self.closed_status:
+                                            jira_client.delete_subscription(self.username, sub[self.field_claim_number])
+                                            self.bot.send_message(user, f"Подписка на обновление статуса заявки удалена")
+                                    if current_date_of_comment and current_date_of_comment > last_comment_id:
+                                        print('Даты комментариев отличаются, cur = ', current_date_of_comment, 'last = ', last_comment_id)
+                                        supabase_client.update_subscription_id(user, claim_number, current_date_of_comment) # функция, которая устанавливает новый id комментария
+                                        self.bot.send_message(user, f"У заявки {claim_number} появился новый комментарий от <b>{current_comment['author']}</b>:\n{current_comment['text']}.\n{claim_link}", parse_mode='HTML')
+                                        print('Вместо сообщения пользователю ')
                             except Exception as e:
                                 print(f"Ошибка опроса заявки {claim_number}: {e}")
                     jira_client.logout()
@@ -892,8 +899,10 @@ class TelegramBot:
     #     else:
     #         return False
 
-    def readable_time(self, original_time):
+    def readable_time(self, original_time, target_tz='UTC'):
         dt = datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z")
+        # tz = pytz.timezone(target_tz)
+        dt = dt.astimezone()
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def handle_text(self, message):
