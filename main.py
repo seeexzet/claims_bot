@@ -692,16 +692,18 @@ class TelegramBot:
                     last_comment = response_from_jira.get('last_comment')
                     if last_comment is not None and last_comment.get('id'):
                         response = supabase_client.can_subscription(self.username, number, response_from_jira['status'], response_from_jira['last_comment']['id'])
+                        print(1111)
                     else:
                         response = supabase_client.can_subscription(self.username, number, response_from_jira['status'])
+                        print(2222)
                     print('response = ', response)
-                    if response.get("data"):
+                    if 'data' in response:
                         self.bot.send_message(call.message.chat.id, f"Вы подписались на обновление статуса заявки {number}")
-                    elif response.get("code") == "LIMIT_EXCEEDED":
-                        print('erooooooooor')
-                        self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на максимальное количество заявок - на {self.max_subscribe}. Выберите заявки, на которые подписаны и отпишитесь от одной из них.")
-                    elif response.get("code") == "SUPABASE_ERROR":
-                        self.bot.send_message(call.message.chat.id,  f"Не удалось сделать подписку на заявку {number}")
+                    elif 'code' in response:
+                        if response.get("code") == "LIMIT_EXCEEDED":
+                            self.bot.send_message(call.message.chat.id, f"Вы уже подписаны на максимальное количество заявок - на {self.max_subscribe}. Выберите заявки, на которые подписаны и отпишитесь от одной из них.")
+                        elif response.get("code") == "SUPABASE_ERROR":
+                            self.bot.send_message(call.message.chat.id,  f"Не удалось сделать подписку на заявку {number}")
                 else:
                     self.bot.send_message(call.message.chat.id, f"Не удалось проверить статус заявки {number}")
         else:
@@ -847,7 +849,7 @@ class TelegramBot:
             print(f"Ошибка подключения к Supabase: {e}")
 
     def start_polling_scheduler(self):
-        schedule.every(9).minutes.do(self.poll_issue_status)
+        schedule.every(1.1).minutes.do(self.poll_issue_status)
 
         def run_schedule():
             while True:

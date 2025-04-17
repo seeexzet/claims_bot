@@ -99,7 +99,7 @@ class SupabaseClient:
                     return {
                         'error': True,
                         'code': e.code,
-                        'message': e.message 
+                        'message': e.message
                     }
                 else:
                     return None
