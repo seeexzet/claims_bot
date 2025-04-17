@@ -891,14 +891,6 @@ class TelegramBot:
         else:
             return False
 
-    # def is_new_date(self, date_from_jira, date_from_supa):
-    #     dt1 = datetime.strptime(date_from_jira, "%Y-%m-%d %H:%M:%S.%f%z")
-    #     dt2 = datetime.strptime(date_from_supa, "%Y-%m-%dT%H:%M:%S")
-    #     if dt1 > dt2:
-    #         return True
-    #     else:
-    #         return False
-
     def readable_time(self, original_time, target_tz='UTC'):
         dt = datetime.strptime(original_time, "%Y-%m-%dT%H:%M:%S.%f%z")
         # tz = pytz.timezone(target_tz)
